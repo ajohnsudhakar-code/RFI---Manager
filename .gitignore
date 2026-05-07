@@ -1,0 +1,13 @@
+.streamlit/secrets.toml
+__pycache__/
+*.pyc
+projects/
+snapshots/
+output/
+drawings/
+error_log.txt
+dist/
+build/
+*.spec
+config.json
+.claude/settings.local.json
