@@ -284,11 +284,26 @@ def render_tab_analyse(email: str):
             n_rej = sum(1 for r in results if r["status"] == "rejected")
             n_pen = sum(1 for r in results if r["status"] == "pending")
 
-            rm1, rm2, rm3, rm4 = st.columns(4)
-            rm1.metric("Total",    len(results))
-            rm2.metric("Approved", n_app)
-            rm3.metric("Rejected", n_rej)
-            rm4.metric("Pending",  n_pen)
+            _pct = int((n_app / len(results)) * 100) if results else 0
+            st.markdown(
+                f'<div style="background:#ffffff;border:1px solid #e8eaed;border-radius:10px;'
+                f'padding:14px 18px;margin-bottom:16px;">'
+                f'<div style="display:flex;justify-content:space-between;margin-bottom:8px;">'
+                f'<span style="font-size:12px;color:#374151;font-weight:500;">Review progress</span>'
+                f'<span style="font-size:12px;color:#1d4ed8;font-weight:600;">'
+                f'{n_app} of {len(results)} approved</span>'
+                f'</div>'
+                f'<div style="background:#f0f0f0;border-radius:20px;height:6px;margin-bottom:10px;">'
+                f'<div style="background:linear-gradient(90deg,#1d4ed8,#3b82f6);'
+                f'width:{_pct}%;height:6px;border-radius:20px;"></div>'
+                f'</div>'
+                f'<div style="display:flex;gap:16px;">'
+                f'<span style="font-size:12px;color:#16a34a;">✓ {n_app} Approved</span>'
+                f'<span style="font-size:12px;color:#dc2626;">✗ {n_rej} Rejected</span>'
+                f'<span style="font-size:12px;color:#f59e0b;">● {n_pen} Pending</span>'
+                f'</div>'
+                f'</div>',
+                unsafe_allow_html=True)
 
             if n_pen > 0:
                 bulk1, bulk2, _ = st.columns([2, 2, 4])
@@ -313,7 +328,11 @@ def render_tab_analyse(email: str):
                             st.session_state.analysis_results, email)
                         st.rerun()
 
-            st.markdown('<div class="sec-lbl" style="margin-top:24px;">Review Each Issue</div>',
+            st.session_state.setdefault("t3_filter", "Pending")
+            _filter = st.radio("Show:", ["All", "Approved", "Rejected", "Pending"],
+                               horizontal=True, key="t3_filter",
+                               label_visibility="collapsed")
+            st.markdown('<div class="sec-lbl" style="margin-top:8px;">Review Each Issue</div>',
                         unsafe_allow_html=True)
             _EDIT_CATS = [
                 "Missing Information", "Conflict Between Sheets",
@@ -321,43 +340,45 @@ def render_tab_analyse(email: str):
                 "Specification Conflict", "Structural Concern",
                 "Architectural Concern", "Services Conflict",
             ]
-            for i, r in enumerate(results):
+            for _orig_idx, r in enumerate(results):
+                if _filter != "All" and r["status"] != _filter.lower():
+                    continue
                 iss    = r["issue"]
                 status = r["status"]
                 color  = {"approved": "#059669", "rejected": "#dc2626", "pending": "#d97706"}[status]
 
-                if status == "approved" and st.session_state.get("t3_edit_idx") == i:
-                    with st.form(key=f"edit_form_{i}"):
+                if status == "approved" and st.session_state.get("t3_edit_idx") == _orig_idx:
+                    with st.form(key=f"edit_form_{_orig_idx}"):
                         st.markdown(
-                            f'<div style="color:#e8edf5;font-size:13px;font-weight:600;'
-                            f'margin-bottom:8px;">Editing Issue {iss.get("issue_number", i+1)}</div>',
+                            f'<div style="color:#111111;font-size:13px;font-weight:600;'
+                            f'margin-bottom:8px;">Editing Issue {iss.get("issue_number", _orig_idx+1)}</div>',
                             unsafe_allow_html=True)
                         new_desc = st.text_area("Description",
                                                 value=iss.get("description", ""),
                                                 height=100,
-                                                key=f"edit_desc_{i}")
+                                                key=f"edit_desc_{_orig_idx}")
                         new_reason = st.text_area("Reason",
                                                   value=iss.get("reason", ""),
                                                   height=80,
-                                                  key=f"edit_reason_{i}")
+                                                  key=f"edit_reason_{_orig_idx}")
                         cur_cat = iss.get("category", _EDIT_CATS[0])
                         cat_idx = _EDIT_CATS.index(cur_cat) if cur_cat in _EDIT_CATS else 0
                         new_cat = st.selectbox("Category", _EDIT_CATS,
                                                index=cat_idx,
-                                               key=f"edit_cat_{i}")
+                                               key=f"edit_cat_{_orig_idx}")
                         new_sheets = st.text_input("Sheets",
                                                    value=iss.get("sheets", ""),
-                                                   key=f"edit_sheets_{i}")
+                                                   key=f"edit_sheets_{_orig_idx}")
                         cur_pri = iss.get("priority", _PRIORITY_OPTS[-1])
                         pri_idx = _PRIORITY_OPTS.index(cur_pri) if cur_pri in _PRIORITY_OPTS else 3
                         new_pri = st.selectbox("Priority", _PRIORITY_OPTS,
                                                index=pri_idx,
-                                               key=f"edit_pri_{i}")
+                                               key=f"edit_pri_{_orig_idx}")
                         _rbd_str = iss.get("response_required_by", "")
                         _rbd_val = datetime.date.fromisoformat(_rbd_str) if _rbd_str else datetime.date.today()
                         new_rbd  = st.date_input("Response Required By",
                                                  value=_rbd_val,
-                                                 key=f"edit_rbd_{i}")
+                                                 key=f"edit_rbd_{_orig_idx}")
                         fs1, fs2 = st.columns([1, 1])
                         with fs1:
                             save_clicked = st.form_submit_button("💾  Save Changes",
@@ -367,12 +388,12 @@ def render_tab_analyse(email: str):
                             cancel_clicked = st.form_submit_button("✕  Cancel",
                                                                    use_container_width=True)
                         if save_clicked:
-                            st.session_state.analysis_results[i]["issue"]["description"] = new_desc
-                            st.session_state.analysis_results[i]["issue"]["reason"]      = new_reason
-                            st.session_state.analysis_results[i]["issue"]["category"]             = new_cat
-                            st.session_state.analysis_results[i]["issue"]["sheets"]               = new_sheets
-                            st.session_state.analysis_results[i]["issue"]["priority"]             = new_pri
-                            st.session_state.analysis_results[i]["issue"]["response_required_by"] = str(new_rbd)
+                            st.session_state.analysis_results[_orig_idx]["issue"]["description"] = new_desc
+                            st.session_state.analysis_results[_orig_idx]["issue"]["reason"]      = new_reason
+                            st.session_state.analysis_results[_orig_idx]["issue"]["category"]             = new_cat
+                            st.session_state.analysis_results[_orig_idx]["issue"]["sheets"]               = new_sheets
+                            st.session_state.analysis_results[_orig_idx]["issue"]["priority"]             = new_pri
+                            st.session_state.analysis_results[_orig_idx]["issue"]["response_required_by"] = str(new_rbd)
                             save_project_scan_results(pid,
                                 st.session_state.analysis_results, email)
                             _approved_sync = [r["issue"] for r in st.session_state.analysis_results
@@ -384,62 +405,92 @@ def render_tab_analyse(email: str):
                             st.session_state["t3_edit_idx"] = None
                             st.rerun()
                 else:
-                    st.markdown(f"""
-<div class="rfi-card" style="border-left:3px solid {color};">
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px;">
-    <div>
-      <strong style="color:#e8edf5;font-size:14px;">
-        Issue {iss.get('issue_number',i+1)} &mdash; {iss.get('category','')}
-      </strong>
-      <span style="color:#374151;font-size:12px;margin-left:12px;">Sheets: {iss.get('sheets','')}</span>
-      <span style="color:#374151;font-size:12px;margin-left:12px;">Priority: {iss.get('priority','—')}</span>
-      <span style="color:#374151;font-size:12px;margin-left:12px;">Due: {iss.get('response_required_by','—')}</span>
-    </div>
-    <span style="color:{color};font-size:11px;font-weight:700;text-transform:uppercase;
-                 letter-spacing:0.08em;padding:2px 8px;border:1px solid {color};
-                 border-radius:4px;">{status}</span>
-  </div>
-  <p style="color:#8892a4;font-size:13px;margin:8px 0 4px;">{iss.get('description','')}</p>
-  <p style="color:#374151;font-size:12px;font-style:italic;margin:0;">Reason: {iss.get('reason','')}</p>
-</div>""", unsafe_allow_html=True)
+                    _pri = iss.get("priority", "")
+                    _pri_color = {"Critical": "#dc2626", "High": "#d97706",
+                                  "Normal": "#374151", "Low": "#6b7280"}.get(_pri, "#6b7280")
+                    _badge_bg, _badge_fg, _badge_bd = {
+                        "approved": ("#f0fdf4", "#15803d", "#bbf7d0"),
+                        "rejected": ("#fff5f5", "#dc2626", "#fecaca"),
+                        "pending":  ("#fffbeb", "#92400e", "#fde68a"),
+                    }.get(status, ("#f8f9fa", "#374151", "#e8eaed"))
+                    _due = iss.get("response_required_by", "") or "—"
+                    st.markdown(
+                        f'<div style="background:#ffffff;border:1px solid #e8eaed;'
+                        f'border-left:3px solid {color};border-radius:10px;'
+                        f'padding:14px 16px;margin-bottom:10px;">'
+                        f'<div style="display:flex;justify-content:space-between;'
+                        f'align-items:flex-start;gap:8px;">'
+                        f'<div style="font-size:13px;color:#111111;font-weight:500;flex:1;'
+                        f'display:-webkit-box;-webkit-line-clamp:2;'
+                        f'-webkit-box-orient:vertical;overflow:hidden;">'
+                        f'{iss.get("description","")}</div>'
+                        f'<span style="background:{_badge_bg};color:{_badge_fg};'
+                        f'border:1px solid {_badge_bd};font-size:10px;font-weight:700;'
+                        f'text-transform:uppercase;letter-spacing:0.08em;'
+                        f'padding:2px 8px;border-radius:4px;white-space:nowrap;">'
+                        f'{status}</span>'
+                        f'</div>'
+                        f'<div style="font-size:11px;color:#6b7280;margin:8px 0 4px;'
+                        f'display:flex;gap:12px;flex-wrap:wrap;">'
+                        f'<span>#{iss.get("issue_number", _orig_idx+1)}</span>'
+                        f'<span>{iss.get("sheets","—")}</span>'
+                        f'<span>{iss.get("category","")}</span>'
+                        f'<span style="color:{_pri_color};">{_pri or "—"}</span>'
+                        f'<span>Due: {_due}</span>'
+                        f'</div>'
+                        f'<div style="font-size:11px;color:#9ca3af;font-style:italic;'
+                        f'display:-webkit-box;-webkit-line-clamp:1;'
+                        f'-webkit-box-orient:vertical;overflow:hidden;">'
+                        f'{iss.get("reason","")}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True)
                     bc1, bc2, bc3, _ = st.columns([1, 1, 1, 5])
                     with bc1:
-                        if st.button("✓  Approve", key=f"app_{i}",
+                        if st.button("✓  Approve", key=f"app_{_orig_idx}",
                                      type=("primary" if status == "approved" else "secondary")):
-                            st.session_state.analysis_results[i]["status"] = "approved"
+                            st.session_state.analysis_results[_orig_idx]["status"] = "approved"
                             save_project_scan_results(pid,
                                 st.session_state.analysis_results, email)
                             st.rerun()
                     with bc2:
-                        if st.button("✗  Reject", key=f"rej_{i}"):
-                            st.session_state.analysis_results[i]["status"] = "rejected"
+                        if st.button("✗  Reject", key=f"rej_{_orig_idx}"):
+                            st.session_state.analysis_results[_orig_idx]["status"] = "rejected"
                             save_project_scan_results(pid,
                                 st.session_state.analysis_results, email)
                             st.rerun()
                     with bc3:
                         if status == "approved":
-                            if st.button("✏️  Edit", key=f"edit_{i}"):
-                                st.session_state["t3_edit_idx"] = i
+                            if st.button("✏️  Edit", key=f"edit_{_orig_idx}"):
+                                st.session_state["t3_edit_idx"] = _orig_idx
                                 st.rerun()
 
             st.markdown("---")
-            if st.button("💾  Save Approved RFIs", type="primary", use_container_width=True, key="t3_save_rfis"):
-                next_rfi      = _next_rfi_number(pid, email)
-                approved_list = [r["issue"] for r in results if r["status"] == "approved"]
-                for i, iss in enumerate(approved_list):
-                    iss["rfi_number"] = next_rfi + i
-                save_project_approved(pid, approved_list, email)
-                last = next_rfi + len(approved_list) - 1
-                st.success(
-                    f"✓ {len(approved_list)} RFI(s) saved — "
-                    f"RFI-{next_rfi:03d} through RFI-{last:03d}"
-                )
-                st.rerun()
+            _sv1, _sv2 = st.columns([3, 1])
+            with _sv1:
+                st.markdown(
+                    f'<div style="font-size:13px;color:#374151;padding-top:8px;">'
+                    f'<strong style="color:#15803d;">{n_app} RFI(s) approved</strong>'
+                    f' — ready to proceed to Crop &amp; Annotate</div>',
+                    unsafe_allow_html=True)
+            with _sv2:
+                if st.button("💾 Save Approved RFIs", type="primary",
+                             use_container_width=True, key="t3_save_rfis"):
+                    next_rfi      = _next_rfi_number(pid, email)
+                    approved_list = [r["issue"] for r in results if r["status"] == "approved"]
+                    for i, iss in enumerate(approved_list):
+                        iss["rfi_number"] = next_rfi + i
+                    save_project_approved(pid, approved_list, email)
+                    last = next_rfi + len(approved_list) - 1
+                    st.success(
+                        f"✓ {len(approved_list)} RFI(s) saved — "
+                        f"RFI-{next_rfi:03d} through RFI-{last:03d}"
+                    )
+                    st.rerun()
         elif not run_ai:
             st.markdown(
                 '<div class="info-box" style="margin-top:20px;">'
-                'Use <strong style="color:#e8edf5;">AI-Assisted Scan</strong> to automatically '
+                'Use <strong style="color:#1d4ed8;">AI-Assisted Scan</strong> to automatically '
                 'detect engineering issues, or describe one in the '
-                '<strong style="color:#e8edf5;">Add Your Own Issue</strong> card above.'
+                '<strong style="color:#1d4ed8;">Add Your Own Issue</strong> card above.'
                 '</div>',
                 unsafe_allow_html=True)
