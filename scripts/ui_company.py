@@ -159,9 +159,10 @@ def render_tab_company(email: str):
                 _PIL.open(up_logo).convert("RGBA").save(buf, format="PNG")
                 upload_asset(email, "company_logo.png", buf.getvalue())
                 st.session_state["_logo_saved_ok"] = True
+                st.session_state["_logo_do_rerun"] = True
             except Exception as e:
                 st.error(f"Could not save logo: {e}")
-            else:
+            if st.session_state.pop("_logo_do_rerun", False):
                 st.rerun()
 
         # ── SIGNATURE IMAGE ───────────────────────────────────────────────────
@@ -196,9 +197,10 @@ def render_tab_company(email: str):
                 _PIL.open(up_sig).convert("RGBA").save(buf, format="PNG")
                 upload_asset(email, "signature.png", buf.getvalue())
                 st.session_state["_sig_saved_ok"] = True
+                st.session_state["_sig_do_rerun"] = True
             except Exception as e:
                 st.error(f"Could not save signature: {e}")
-            else:
+            if st.session_state.pop("_sig_do_rerun", False):
                 st.rerun()
 
     st.markdown("---")
@@ -218,9 +220,10 @@ def render_tab_company(email: str):
                 st.session_state.tab_company_done = True
                 st.session_state["co_edit_mode"] = False
                 st.session_state["_company_saved_ok"] = True
+                st.session_state["_company_do_rerun"] = True
             except Exception as _save_err:
                 st.error(f"Save failed: {_save_err}")
-            else:
+            if st.session_state.pop("_company_do_rerun", False):
                 st.rerun()
 
     if st.session_state.pop("_company_saved_ok", False):

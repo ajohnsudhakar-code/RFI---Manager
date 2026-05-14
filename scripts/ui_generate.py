@@ -41,6 +41,12 @@ def render_tab_generate(email: str):
     clients  = load_project_clients(pid, email)
 
     st.markdown("## Generate RFI Document")
+    st.markdown(
+        '<div style="font-size:12px;color:#6b7280;'
+        'margin-top:-8px;margin-bottom:8px;">'
+        'Generate a Word document for each approved '
+        'RFI and send to your client</div>',
+        unsafe_allow_html=True)
 
     if not approved:
         st.markdown(
@@ -83,8 +89,8 @@ def render_tab_generate(email: str):
 
     if not _is_paid:
         st.markdown(
-            f'<p style="color:#4a5568;font-size:12px;margin:12px 0 0;">'
-            f'Free RFIs remaining: <strong style="color:#F0A500;">'
+            f'<p style="color:#374151;font-size:12px;margin:12px 0 0;">'
+            f'Free RFIs remaining: <strong style="color:#1d4ed8;">'
             f'{FREE_LIMIT - _rfi_cnt}</strong> of {FREE_LIMIT}</p>',
             unsafe_allow_html=True)
 
@@ -100,21 +106,21 @@ def render_tab_generate(email: str):
         snaps  = _local_snaps(snaps_dir, rfi_n, max_snaps)
         has_s  = len(snaps) > 0
         border = "#059669" if has_s else "#dc2626"
-        badge  = (f'<span style="color:#6ee7b7;font-size:12px;">🖼 {len(snaps)} snapshot(s)</span>'
+        badge  = (f'<span style="background:#f0fdf4;padding:2px 8px;border-radius:10px;border:1px solid #bbf7d0;color:#15803d;font-size:12px;">🖼 {len(snaps)} snapshot(s)</span>'
                   if has_s else
-                  '<span style="color:#fca5a5;font-size:12px;">⚠ No snapshots</span>')
-        _card_col, _client_col, _btn_col = st.columns([4, 2, 1])
+                  '<span style="background:#fffbeb;padding:2px 8px;border-radius:10px;border:1px solid #fde68a;color:#92400e;font-size:12px;">⚠ No snapshots</span>')
+        _card_col, _client_col, _btn_col = st.columns([4, 2, 2])
         with _card_col:
             st.markdown(f"""
 <div class="rfi-card" style="border-left:3px solid {border};">
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
-    <strong style="color:#e8edf5;">RFI-{rfi_n:03d}</strong>
+    <strong style="color:#1d4ed8;">RFI-{rfi_n:03d}</strong>
     <div style="display:flex;gap:12px;align-items:center;">
       <span style="color:#374151;font-size:12px;">Sheet: {issue.get('sheets','?')}</span>
       {badge}
     </div>
   </div>
-  <p style="color:#8892a4;font-size:13px;margin:8px 0 0;">{issue.get('description','')[:200]}</p>
+  <p style="color:#374151;font-size:13px;margin:8px 0 0;">{issue.get('description','')[:200]}</p>
 </div>""", unsafe_allow_html=True)
         with _client_col:
             st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
@@ -223,18 +229,26 @@ def render_tab_generate(email: str):
                        key=lambda p: p.stat().st_mtime, reverse=True)
     if prev_docs:
         with st.expander(f"📂  Previously generated documents ({len(prev_docs)})"):
+            st.markdown(
+                '<div style="display:grid;grid-template-columns:5fr 1fr;'
+                'background:#fafafa;border-bottom:1px solid #f0f0f0;'
+                'padding:4px 0;font-size:10.5px;color:#9ca3af;'
+                'text-transform:uppercase;font-weight:600;">'
+                '<span>Filename</span><span>Download</span></div>',
+                unsafe_allow_html=True)
             for doc_path in prev_docs[:10]:
                 dc1, dc2 = st.columns([5, 1])
                 dc1.markdown(
-                    f'<span style="color:#e8edf5;font-size:13px;">{doc_path.name}</span>',
+                    f'<span style="color:#374151;font-size:13px;">{doc_path.name}</span>',
                     unsafe_allow_html=True)
                 with dc2:
                     with open(doc_path, "rb") as fh:
                         st.download_button(
-                            "⬇️",
+                            "↓ Download",
                             data=fh,
                             file_name=doc_path.name,
                             mime="application/vnd.openxmlformats-officedocument"
                                  ".wordprocessingml.document",
+                            use_container_width=True,
                             key=f"dl_{doc_path.stem}",
                         )

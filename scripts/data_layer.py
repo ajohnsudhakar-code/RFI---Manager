@@ -1115,13 +1115,19 @@ def upsert_project_register_rows(pid: str, approved: list, proj_name: str, email
     today  = date.today().isoformat()
     for iss in approved:
         rn  = get_rfi_num(iss, 1)
+        _rbd_local_raw = iss.get("response_required_by", "")
+        _rbd_local = _rbd_local_raw.strip() if (
+            isinstance(_rbd_local_raw, str)
+            and _rbd_local_raw.strip()
+            and _rbd_local_raw.strip().lower() != "none"
+        ) else None
         row = {
             "rfi_number":           rn,
             "project_name":         proj_name,
             "sheet_reference":      iss.get("sheets", ""),
             "category":             iss.get("category", ""),
             "priority":             iss.get("priority", ""),
-            "response_required_by": iss.get("response_required_by") or None,
+            "response_required_by": _rbd_local,
             "description":          iss.get("description", "")[:500],
             "status":               "Open",
             "date_raised":          today,
@@ -1144,6 +1150,12 @@ def upsert_project_register_rows(pid: str, approved: list, proj_name: str, email
                     if r.get("rfi_number") == rn:
                         _status = r.get("status", "Open")
                         break
+                _rbd_raw = iss.get("response_required_by", "")
+                _rbd_val = _rbd_raw.strip() if (
+                    isinstance(_rbd_raw, str)
+                    and _rbd_raw.strip()
+                    and _rbd_raw.strip().lower() != "none"
+                ) else None
                 sb.table("rfi_register").upsert({
                     "email":                email,
                     "project_id":           pid,
@@ -1152,7 +1164,7 @@ def upsert_project_register_rows(pid: str, approved: list, proj_name: str, email
                     "sheet_reference":      iss.get("sheets", ""),
                     "category":             iss.get("category", ""),
                     "priority":             iss.get("priority", ""),
-                    "response_required_by": iss.get("response_required_by") or None,
+                    "response_required_by": _rbd_val,
                     "description":          iss.get("description", "")[:500],
                     "status":               _status,
                     "date_raised":          today,

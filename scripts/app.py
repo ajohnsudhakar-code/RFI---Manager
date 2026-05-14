@@ -78,6 +78,7 @@ except ImportError as _e:
     raise SystemExit(f"Streamlit not installed: {_e}")
 
 import io, uuid
+import streamlit.components.v1 as components
 
 # ── PAGE CONFIG (must be the very first st.* call) ────────────────────────────
 st.set_page_config(
@@ -119,20 +120,10 @@ st.markdown("""
 footer                       { display: none !important; }
 [data-testid="stToolbar"]    { display: none !important; }
 [data-testid="stDecoration"] { display: none !important; }
-/* Keep header in render tree so collapsedControl stays clickable */
-[data-testid="stHeader"] {
-    background: transparent !important;
-    height: 0px !important;
-    min-height: 0px !important;
-    padding: 0 !important;
-    overflow: visible !important;
-}
-/* Force the sidebar toggle always visible */
-[data-testid="collapsedControl"] {
-    display: flex !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-}
+[data-testid="collapsedControl"] { display: none !important; }
+[data-testid="stSidebarResizeHandle"] { display: none !important; }
+[data-testid="stSidebarNav"]          { display: none !important; }
+[data-testid="stHeader"]              { display: none !important; }
 
 /* ── Base ── */
 html, body, [class*="css"] {
@@ -524,7 +515,7 @@ def _restore_session_from_db():
         # Persist refreshed tokens back to DB
         save_user_session(_sid, _email_r, _new_at, _new_rt, int(_new_exp))
         st.session_state["user_email"] = _email_r
-        st.rerun()
+        st.session_state["_restore_do_rerun"] = True
     except Exception as _re:
         log_error(_re, "_restore_session_from_db/set_session")
         # Tokens invalid — delete the stale row and show login form
@@ -533,6 +524,8 @@ def _restore_session_from_db():
             st.query_params.clear()
         except Exception:
             pass
+    if st.session_state.pop("_restore_do_rerun", False):
+        st.rerun()
 
 
 _restore_session_from_db()
@@ -575,13 +568,96 @@ def _render_login():
         """, unsafe_allow_html=True)
 
         if _supabase_configured:
+            # ── Recovery token detection (Supabase password reset link) ───────
+            if not st.session_state.get("_password_reset_mode"):
+                _rec_type = st.query_params.get("type", "")
+                if _rec_type == "recovery":
+                    _rec_th  = st.query_params.get("token_hash", "")
+                    _rec_err = ""
+                    if _rec_th:
+                        try:
+                            _sb_r = get_supabase_client()
+                            _sb_r.auth.verify_otp({
+                                "token_hash": _rec_th,
+                                "type": "recovery"
+                            })
+                            st.session_state["_password_reset_mode"] = True
+                        except Exception as _rec_exc:
+                            _rec_err = str(_rec_exc)
+                    else:
+                        _rec_err = "malformed"
+                    try:
+                        st.query_params.clear()
+                    except Exception:
+                        pass
+                    if _rec_err:
+                        st.session_state["_login_error"] = (
+                            "Password reset link is invalid or expired. "
+                            "Please request a new one."
+                        )
+                        st.session_state["_login_mode"] = "forgot"
+                        st.rerun()
+
             _mode      = st.session_state.get("_login_mode", "signin")
             _login_err = st.session_state.get("_login_error", "")
             if _login_err:
                 st.error(_login_err)
+            if st.session_state.pop("_password_reset_ok", False):
+                st.success(
+                    "Password updated — please sign in with your new password.")
+
+            # ── STATE 0: Set New Password (recovery link) ─────────────────────
+            if st.session_state.get("_password_reset_mode"):
+                st.markdown(
+                    '<div style="color:#111111;font-size:20px;'
+                    'font-weight:700;margin-bottom:20px;">Set New Password</div>',
+                    unsafe_allow_html=True)
+                _np_pw = st.text_input(
+                    "New Password",
+                    placeholder="New password (min 8 characters)",
+                    type="password",
+                    label_visibility="collapsed",
+                    key="reset_new_pw_input",
+                )
+                _np_confirm = st.text_input(
+                    "Confirm New Password",
+                    placeholder="Confirm new password",
+                    type="password",
+                    label_visibility="collapsed",
+                    key="reset_confirm_pw_input",
+                )
+                if st.button("Update Password", type="primary",
+                             use_container_width=True, key="reset_submit_btn"):
+                    _np  = _np_pw.strip()
+                    _nc  = _np_confirm.strip()
+                    if len(_np) < 8:
+                        st.session_state["_login_error"] = (
+                            "Password must be at least 8 characters.")
+                        st.rerun()
+                    elif _np != _nc:
+                        st.session_state["_login_error"] = (
+                            "Passwords do not match.")
+                        st.rerun()
+                    else:
+                        _upd_err = ""
+                        try:
+                            _sb_u = get_supabase_client()
+                            _sb_u.auth.update_user({"password": _np})
+                        except Exception as _upd_exc:
+                            _upd_err = str(_upd_exc)
+                        if _upd_err:
+                            st.session_state["_login_error"] = (
+                                f"Could not update password: {_upd_err}")
+                            st.rerun()
+                        else:
+                            st.session_state["_password_reset_mode"] = False
+                            st.session_state["_login_mode"]  = "signin"
+                            st.session_state["_login_error"] = ""
+                            st.session_state["_password_reset_ok"] = True
+                            st.rerun()
 
             # ── STATE 1: Sign In ──────────────────────────────────────────────
-            if _mode == "signin":
+            elif _mode == "signin":
                 st.markdown(
                     '<div style="color:#111111;font-size:20px;'
                     'font-weight:700;margin-bottom:20px;">Sign In</div>',
@@ -640,6 +716,28 @@ def _render_login():
                     '<div style="color:#111111;font-size:20px;'
                     'font-weight:700;margin-bottom:20px;">Create Account</div>',
                     unsafe_allow_html=True)
+                if st.session_state.get("_signup_confirm_pending"):
+                    _pending_email = st.session_state.get(
+                        "_signup_pending_email", "your email")
+                    st.markdown(
+                        f'<div style="border-left:3px solid #059669;'
+                        f'background:#f0fdf4;border-radius:6px;'
+                        f'padding:14px 18px;margin-bottom:18px;'
+                        f'color:#166534;font-size:14px;">'
+                        f'✓ Account created for <strong>{_pending_email}'
+                        f'</strong>.<br>Check your email and click the '
+                        f'confirmation link, then come back to sign in.'
+                        f'</div>',
+                        unsafe_allow_html=True)
+                    if st.button("Go to Sign In", type="primary",
+                                 use_container_width=True,
+                                 key="goto_signin_after_confirm"):
+                        st.session_state["_signup_confirm_pending"] = False
+                        st.session_state["_signup_pending_email"] = ""
+                        st.session_state["_login_mode"] = "signin"
+                        st.session_state["_login_error"] = ""
+                        st.rerun()
+                    st.stop()
                 _su_email = st.text_input(
                     "Email address",
                     placeholder="you@company.com",
@@ -676,20 +774,43 @@ def _render_login():
                         st.rerun()
                     else:
                         _su_err_msg = ""
+                        _su_resp = None
                         try:
                             _sb = get_supabase_client()
-                            _sb.auth.sign_up({"email": _clean, "password": _pw})
+                            _su_resp = _sb.auth.sign_up({"email": _clean, "password": _pw})
                         except Exception as _su_exc:
                             _su_err_msg = str(_su_exc)
                         if _su_err_msg:
+                            if "already registered" in _su_err_msg.lower() or \
+                               "already exists" in _su_err_msg.lower():
+                                _su_err_msg = (
+                                    "An account with this email already exists. "
+                                    "Please sign in instead."
+                                )
+                                st.session_state["_login_mode"] = "signin"
                             st.session_state["_login_error"] = _su_err_msg
                             st.rerun()
                         else:
+                            _su_user = getattr(_su_resp, "user", None)
+                            _su_ids  = getattr(_su_user, "identities", None)
+                            if _su_user is not None and _su_ids is not None and len(_su_ids) == 0:
+                                st.session_state["_login_error"] = (
+                                    "An account with this email already exists. "
+                                    "Please sign in instead."
+                                )
+                                st.session_state["_login_mode"] = "signin"
+                                st.rerun()
                             with st.spinner("Creating account…"):
                                 _result = sign_in_with_password(_clean, _pw)
                             _first, _second = _result
                             if _first is False:
-                                st.session_state["_login_error"] = _second
+                                _err_lower = _second.lower() if isinstance(_second, str) else ""
+                                if "not confirmed" in _err_lower or "confirm" in _err_lower:
+                                    st.session_state["_signup_confirm_pending"] = True
+                                    st.session_state["_signup_pending_email"] = _clean
+                                    st.session_state.pop("_login_error", None)
+                                else:
+                                    st.session_state["_login_error"] = _second
                                 st.rerun()
                             else:
                                 st.session_state.pop("_login_error", None)
@@ -802,7 +923,6 @@ _defaults = {
     "crop_rfi_idx":       0,
     "show_manual_form":   False,
     "generate_output":    "",
-    "sidebar_visible":    True,
     "current_project_id": _pid,
 }
 for k, v in _defaults.items():
@@ -816,6 +936,7 @@ if not st.session_state.get("_usage_tracked"):
 # ── SIDEBAR ───────────────────────────────────────────────────────────────────
 def _reset_project_state():
     """Pop all project-scoped session state keys so a new project starts clean."""
+    _old_pid = st.session_state.get("current_project_id", "")
     for _k in [
         "current_project_id", "_pid_is_new_unsaved", "t2_loaded_pid",
         "_sb_labels", "_sb_label_pids",
@@ -828,6 +949,22 @@ def _reset_project_state():
         if (_rk.startswith("t2_proj_name_") or
                 _rk.startswith("t2_proj_address_") or
                 _rk.startswith("t2_proj_number_")):
+            st.session_state.pop(_rk, None)
+    for _rk in list(st.session_state.keys()):
+        if (
+            _rk.startswith("t5_doc_path_") or
+            _rk.startswith("t5_client_") or
+            _rk.startswith("t4_") or
+            _rk.startswith("gen_") or
+            _rk.startswith("dl_") or
+            (_old_pid and _old_pid in _rk and (
+                _rk.startswith("t2_") or _rk.startswith("t3_") or
+                _rk.startswith("t5_") or _rk.startswith("gen_") or
+                _rk.startswith("dl_") or _rk.startswith("ul_") or
+                _rk.startswith("lbl_") or _rk.startswith("sv_") or
+                _rk.startswith("del_")
+            ))
+        ):
             st.session_state.pop(_rk, None)
 
 
@@ -945,6 +1082,22 @@ with st.sidebar:
                             _rk.startswith("t2_proj_address_") or
                             _rk.startswith("t2_proj_number_")):
                         st.session_state.pop(_rk, None)
+                for _rk in list(st.session_state.keys()):
+                    if (
+                        _rk.startswith("t5_doc_path_") or
+                        _rk.startswith("t5_client_") or
+                        _rk.startswith("t4_") or
+                        _rk.startswith("gen_") or
+                        _rk.startswith("dl_") or
+                        (_sb_pid and _sb_pid in _rk and (
+                            _rk.startswith("t2_") or _rk.startswith("t3_") or
+                            _rk.startswith("t5_") or _rk.startswith("gen_") or
+                            _rk.startswith("dl_") or _rk.startswith("ul_") or
+                            _rk.startswith("lbl_") or _rk.startswith("sv_") or
+                            _rk.startswith("del_")
+                        ))
+                    ):
+                        st.session_state.pop(_rk, None)
                 st.session_state.pop("_sb_labels", None)
                 st.session_state.pop("_sb_label_pids", None)
                 st.rerun()
@@ -954,33 +1107,36 @@ with st.sidebar:
             _reset_project_state()
             st.session_state["current_project_id"] = _next_pid
             st.session_state["_pid_is_new_unsaved"] = True
+            st.session_state["_goto_tab2"] = True
             st.rerun()
 
 
     st.markdown("---")
-    if st.button("← Hide Panel", use_container_width=True, key="sb_hide_btn"):
-        st.session_state.sidebar_visible = False
-        st.rerun()
     st.markdown(
         '<div style="text-align:center;color:#374151;font-size:11px;padding:4px 0 6px;">'
         'RFI Manager &nbsp;v1.0.0-beta</div>',
         unsafe_allow_html=True)
 
-# ── Sidebar hide/show ─────────────────────────────────────────────────────────
-if not st.session_state.sidebar_visible:
-    st.markdown("""
-<style>
-[data-testid="stSidebar"]        { display: none !important; }
-[data-testid="collapsedControl"] { display: none !important; pointer-events: none !important; }
-</style>
-""", unsafe_allow_html=True)
-    if st.button("☰  Show Panel", key="main_show_btn", use_container_width=False):
-        st.session_state.sidebar_visible = True
-        st.rerun()
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  TABS
 # ══════════════════════════════════════════════════════════════════════════════
+if st.session_state.pop("_goto_tab2", False):
+    components.html(
+        """<script>
+(function(){
+    function _clickTab2(){
+        var tabs=window.parent.document.querySelectorAll(
+            '[data-baseweb="tab"]');
+        if(tabs.length>=2){tabs[1].click();}
+        else{setTimeout(_clickTab2,200);}
+    }
+    setTimeout(_clickTab2,200);
+})();
+</script>""",
+        height=0,
+    )
+
 try:
     t1, t2, t3, t4, t5, t6 = st.tabs([
         "🏢  Company Setup",

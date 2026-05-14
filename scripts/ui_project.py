@@ -225,13 +225,14 @@ def render_tab_project(email: str):
                 save_project_cfg(pid, pcfg, email)
                 st.session_state["current_project_id"] = pid
                 st.session_state["_project_saved_ok"]  = True
+                st.session_state["_project_do_rerun"]  = True
                 st.session_state[f"t2_edit_mode_{pid}"] = False
                 st.session_state.pop("_pid_is_new_unsaved", None)
                 st.session_state.pop(f"t2_uploaded_pdf_{pid}", None)
             except Exception as _save_err:
                 st.error(f"❌ Save failed: {type(_save_err).__name__}: {_save_err}")
                 st.stop()
-            else:
+            if st.session_state.pop("_project_do_rerun", False):
                 st.rerun()
 
     # ── Section 2: Clients ───────────────────────────────────────────────────

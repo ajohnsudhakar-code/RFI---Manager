@@ -67,6 +67,7 @@ def _next_rfi_number(pid: str, email: str = "") -> int:
 
 def render_tab_analyse(email: str):
     pid = st.session_state.get("current_project_id", "")
+    _PRIORITY_OPTS = ["Critical", "High", "Normal", "Low"]
     if not pid:
         st.info("No project selected. Create or select a project from the sidebar first.")
         return
@@ -238,7 +239,7 @@ def render_tab_analyse(email: str):
         with tab_manual:
             sheet_map = load_project_sheet_map(pid, email)
             with st.form("manual_form"):
-                desc      = st.text_area("", height=120, label_visibility="collapsed",
+                desc      = st.text_area("RFI Description", height=120, label_visibility="collapsed",
                                          placeholder="e.g. Sheet S101 shows SE62 mesh but Sheet S105 detail shows SE72.")
                 manual_pri = st.selectbox("Priority", _PRIORITY_OPTS, index=3,
                                           key="manual_pri")
@@ -270,11 +271,13 @@ def render_tab_analyse(email: str):
                         st.session_state.analysis_results = existing
                         save_project_scan_results(pid,
                             st.session_state.analysis_results, email)
-                    st.rerun()
+                        st.session_state["_analyse_do_rerun"] = True
                 except json.JSONDecodeError:
                     st.error("Could not parse the AI response — please try again.")
                 except Exception as e:
                     st.error(f"Error: {e}")
+                if st.session_state.pop("_analyse_do_rerun", False):
+                    st.rerun()
 
         # ── REVIEW RESULTS ────────────────────────────────────────────────────
         results = st.session_state.get("analysis_results", [])

@@ -49,6 +49,7 @@ BUSINESS MODEL:
 | Component | Technology | Version | Notes |
 |---|---|---|---|
 | Frontend | Streamlit | 1.55.0 | NEVER change version |
+| Deployment | Streamlit Cloud | — | https://rfi-manager.streamlit.app/ |
 | Backend | Python | 3.14 | Windows local, Linux cloud |
 | Database | Supabase PostgreSQL | latest | All data scoped by email |
 | Storage | Supabase Storage | latest | Two private buckets |
@@ -58,6 +59,10 @@ BUSINESS MODEL:
 | PDF | PyMuPDF | latest | PDF rendering and cropping |
 
 Run command: py -m streamlit run scripts/app.py
+
+Theme config: .streamlit/config.toml (created UX session). Settings: base=light,
+primaryColor=#1d4ed8, backgroundColor=#f5f6f8, secondaryBackgroundColor=#ffffff,
+textColor=#111111
 
 ### Dependency Version Constraints
 
@@ -144,6 +149,10 @@ User (email: ajohnsudhakar@gmail.com)
 
 Project ID: kflkrzxaaoceemcudqvb
 Region: ap-southeast-1
+Streamlit Cloud URL: https://rfi-manager.streamlit.app/
+Supabase Site URL: https://rfi-manager.streamlit.app/
+Supabase Redirect URL: https://rfi-manager.streamlit.app/
+Reset email template: uses token_hash query param (not hash fragment) — required for Streamlit compatibility.
 Auth: Email + Password — PERMANENT. Never change this.
 Email Confirmation: Currently OFF (for local testing).
 MUST be turned ON in Supabase dashboard before deployment:
@@ -544,6 +553,15 @@ document with empty values for those fields.
 Fix: Added save_project_approved() call in the edit form save handler in ui_analyse.py,
 rebuilding the approved list from session state after each edit.
 
+### 31. Tab 1 edit mode showing empty fields
+When user clicked Edit Details, form fields showed empty even though data
+existed in Supabase.
+Root cause: setdefault() never overwrites existing session state keys. Keys
+existed as empty strings from prior run.
+Fix: On Edit Details button click, explicitly overwrite all 9 form session
+state keys with current values from cfg before st.rerun().
+File: ui_company.py
+
 ---
 
 ## WHAT IS WORKING TODAY
@@ -592,6 +610,28 @@ rebuilding the approved list from session state after each edit.
 | Tab 3 — Priority field (Critical/High/Normal/Low) in edit form, manual entry, card display | ✅ Working |
 | Tab 3 — Response Required By date field in edit form, manual entry, card display | ✅ Working |
 | Tab 3 — Priority + Response Required By sync to Word doc via save_project_approved() on every edit save | ✅ Working |
+| Full app light theme — dark theme replaced across all 6 tabs, login screen, and sidebar | ✅ Working |
+| Tab 1 — View/edit mode (co_edit_mode session key) — form read-only after save, Edit Details button to re-enter edit mode | ✅ Working |
+| Tab 1 — Next step banner after save pointing to Project Setup | ✅ Working |
+| Tab 2 — View/edit mode (t2_edit_mode_{pid} session key) — project info read-only after save | ✅ Working |
+| Tab 2 — Client table (replaces card layout) — Company, Contact, Role, Email, Phone, Actions | ✅ Working |
+| Tab 2 — Client delete confirmation (t2_confirm_del_client session key) | ✅ Working |
+| Tab 2 — Raw file path hidden — replaced with green PDF status card showing filename only | ✅ Working |
+| Tab 2 — Next step banner after save pointing to Analyse Drawings | ✅ Working |
+| Tab 3 — Progress bar replacing metric columns | ✅ Working |
+| Tab 3 — Filter radio (t3_filter session key, defaults to Pending) — All/Approved/Rejected/Pending | ✅ Working |
+| Tab 3 — Redesigned RFI cards — description as headline, colour-coded badges, priority colours | ✅ Working |
+| Tab 3 — Save Approved RFIs button compact with context label | ✅ Working |
+| Tab 4 — Page header with title, subtitle, and progress pill (X of Y RFIs have snapshots) | ✅ Working |
+| Tab 4 — Navigation row redesigned — both arrows together left, dropdown centre, snap badge right | ✅ Working |
+| Tab 4 — Numbered step circles (1/2/3) for upload workflow | ✅ Working |
+| Tab 4 — Snapshot gallery header shows RFI context | ✅ Working |
+| Tab 5 — RFI numbers visible in blue (#1d4ed8) | ✅ Working |
+| Tab 5 — Previously generated documents — filenames readable, proper table layout | ✅ Working |
+| Tab 5 — Page subtitle added | ✅ Working |
+| Tab 6 — Page title and subtitle added | ✅ Working |
+| Tab 6 — Update button styled as primary | ✅ Working |
+| Tab 6 — Download Register button label and width fixed | ✅ Working |
 
 ---
 
@@ -742,6 +782,20 @@ Fix all uses before SESSION 6 deployment.
 - [ ] Fix issues found in real world testing
 - [ ] Version 2 planning based on feedback
 
+### UX/UI OVERHAUL SESSION — Complete ✅
+- [x] Light theme — .streamlit/config.toml created
+- [x] Global CSS block (app.py lines 112-418) converted from dark to light theme
+- [x] Login screen dark card fixed
+- [x] Sidebar logo area fixed
+- [x] Tab 1 — view/edit mode, next step banner, edit mode empty fields bug fixed
+- [x] Tab 2 — view/edit mode, client table, delete confirmation, project info
+      view mode, raw file path hidden, next step banner
+- [x] Tab 3 — progress bar, filter radio, card redesign, save button layout
+- [x] Tab 4 — page header, nav fix, step circles, gallery context label
+- [x] Tab 5 — RFI number colours, previously generated docs table, subtitle
+- [x] Tab 6 — title, Update button primary, Download button fixed
+- [x] Deployed to Streamlit Cloud
+
 ---
 
 ## VERSION 1 — Remaining Work (Must complete before launch)
@@ -758,9 +812,9 @@ save_project_register() is local-only but is not in the critical path for status
 - S3-07: Approved RFI list locked — no inline edit after approval ✅ RESOLVED — same edit form (S3-01) covers inline editing of approved RFIs
 
 ### Pre-Deployment Checklist
-- [ ] Turn on email confirmation in Supabase dashboard (Authentication → Sign In / Providers → Confirm email → ON)
-- [ ] Deploy to Streamlit Cloud
-- [ ] Test Sign Up flow with a real new user email
+- [x] Turn on email confirmation in Supabase dashboard (Authentication → Sign In / Providers → Confirm email → ON)
+- [x] Deploy to Streamlit Cloud
+- [x] Test Sign Up flow with a real new user email
 
 ---
 
@@ -878,26 +932,146 @@ All phases complete:
 
 ## Known Bugs — Priority Order for Next Sessions
 
-### CRITICAL — Fix before any user touches the app
+### CRITICAL — All bugs in this section resolved ✅
 
-**BUG-01** | data_layer.py — _migrate_legacy_to_projects()
+**BUG-12** | ui_analyse.py — _PRIORITY_OPTS UnboundLocalError on Python 3.14 ✅ RESOLVED
+Tab 3 crashed immediately on load with:
+UnboundLocalError: cannot access local variable '_PRIORITY_OPTS'
+Root cause: Python 3.14 changed free variable resolution in nested
+scopes — the module-level _PRIORITY_OPTS became ambiguous inside
+render_tab_analyse() under certain execution paths.
+Fix: Added _PRIORITY_OPTS = ["Critical", "High", "Normal", "Low"]
+as first line inside render_tab_analyse() at line 70 of ui_analyse.py.
+
+**BUG-13** | data_layer.py — Empty date string crashing Supabase register save ✅ RESOLVED
+Every RFI generation failed to save to Supabase rfi_register with:
+APIError code 22007: invalid input syntax for type date: ""
+Root cause: response_required_by field sent as "" instead of NULL.
+The "or None" guard failed for values like "None" string or whitespace.
+Fix: Added sanitiser at lines 1117-1121 and 1152-1156 of data_layer.py.
+Sanitiser rejects "", whitespace, and literal "None" — sends NULL to
+Postgres. Valid date strings like "2026-06-01" pass through unchanged.
+
+**BUG-14** | app.py — Email confirmation flow broken on registration ✅ RESOLVED
+After sign_up() succeeded, code immediately called
+sign_in_with_password() which returned "Email not confirmed"
+shown as a red error. User had no idea account was created.
+Fix: Intercept "not confirmed" / "confirm" error after
+sign_in_with_password(). Set _signup_confirm_pending flag,
+show green confirmation banner with "Go to Sign In" button.
+
+**BUG-15** | app.py — "User already registered" raw error on signup ✅ RESOLVED
+Raw Supabase error shown directly. User stayed on signup
+screen with no guidance.
+Fix: Intercept "already registered"/"already exists" in
+except block. Replace with friendly message and auto-switch
+to signin screen.
+
+**BUG-16** | app.py — Password reset link went to Supabase hosted page ✅ RESOLVED
+Forgot Password sent reset email but link went to Supabase's
+own page, not the app. User had to find app URL manually.
+Fix: Added recovery token detection in _render_login().
+Detects type=recovery in query params, calls set_session(),
+shows Set New Password screen, calls update_user() on submit.
+Supabase dashboard: Site URL and Redirect URL both set to
+https://rfi-manager.streamlit.app/
+Additional fixes applied in follow-up session:
+- Supabase Site URL updated to https://rfi-manager.streamlit.app/
+- Redirect URL updated to https://rfi-manager.streamlit.app/
+- Supabase reset password email template updated to use
+  token_hash as query parameter instead of hash fragment
+- app.py recovery handler updated from set_session(access_token)
+  to verify_otp(token_hash) — lines 574-583
+- Malformed reset link now handled gracefully (Scenario 16b)
+
+**BUG-17** | app.py — Sidebar hide/show feature caused
+permanent sidebar loss ✅ RESOLVED
+Custom Hide Panel / Show Panel buttons and native Streamlit
+collapse arrow all removed. Sidebar is now permanently visible.
+Removed: sidebar_visible session state, Hide Panel button,
+Show Panel block, stHeader and collapsedControl CSS rules.
+Additional CSS added to hide stSidebarResizeHandle,
+stSidebarNav, and stHeader elements.
+
+**BUG-18** | app.py — Signup duplicate email shows raw error
+with confirmation ON ✅ RESOLVED
+When email confirmation is ON, Supabase silently succeeds on
+sign_up() for duplicate emails instead of raising an error.
+The friendly "email already exists" detection never fires.
+User sees generic "Invalid login credentials" with no guidance.
+Status: FIXED — sign_up() response inspected for empty 
+identities list. If empty, friendly error shown and user 
+redirected to signin. getattr used safely to prevent 
+AttributeError. st.rerun() outside all try/except.
+
+**BUG-19** | ui_analyse.py — empty label warning on Python 3.14 ✅ RESOLVED
+st.text_area("", ...) at line 242 generates a warning in
+Python 3.14 — may become an exception in future versions.
+Fix: Change empty string label "" to a descriptive label
+with label_visibility="collapsed".
+Status: FIXED — st.text_area label changed from "" to 
+"RFI Description" with label_visibility="collapsed". 
+Warning eliminated on Python 3.14.
+
+**BUG-20** | app.py — New Project button did not redirect
+to Tab 2 (Project Setup) ✅ RESOLVED
+After clicking "+ New Project", app stayed on current tab.
+User had to manually click Project Setup tab.
+Fix: Set _goto_tab2 flag before st.rerun() in the New 
+Project handler. After rerun, inject JavaScript via 
+st.components.v1.html to click the second tab button 
+using [data-baseweb="tab"] selector with 200ms delay.
+Flag is consumed with pop() so JS fires exactly once.
+
+**BUG-21** | app.py — Old project data persisted on tabs
+after project switch ✅ RESOLVED
+After switching projects or clicking New Project, Tabs 3,
+4, 5 still showed previous project scan results, snapshots,
+and generated documents.
+Fix: Added dynamic key clearing loop in both 
+_reset_project_state() and the project switch handler.
+Clears all keys starting with t5_doc_path_, t5_client_,
+t4_, gen_, dl_, and any key containing the old project ID
+that also starts with a known tab prefix (t2_, t3_, t5_,
+gen_, dl_, ul_, lbl_, sv_, del_).
+_old_pid captured before pop loop so pid is available
+for matching.
+
+**BUG-01** | data_layer.py — _migrate_legacy_to_projects() ✅ RESOLVED
 References CONTACTS_JSON which was deleted. NameError on every new user login.
 Fix: Replace `if CONTACTS_JSON.exists():` with local variable:
     _legacy_contacts = BASE / "scripts" / "contacts.json"
     if _legacy_contacts.exists():
+Status: Already fixed — _legacy_contacts local variable confirmed
+in place at line 1252 of data_layer.py.
 
-**BUG-11** | app.py — analysis_results not cleared on project switch
+**BUG-11** | app.py — analysis_results not cleared on project switch ✅ RESOLVED
 Switching projects leaves previous project's scan results in session state.
 User can approve Project A's issues while viewing Project B.
 Fix: Add "analysis_results" and "t3_loaded_pid" to the TABCLEAR tuple in app.py.
+Status: Already fixed — "analysis_results" and "t3_loaded_pid"
+confirmed in _TAB_CLEAR list at lines 884 and 892 of app.py.
 
 ### HIGH PRIORITY — All bugs in this section resolved ✅
 BUG-02/09/10, BUG-07, BUG-08 fixed this session. See KNOWN BUGS AND THEIR FIXES #24–26.
 
+### st.rerun() inside try/except — ALL 7 VIOLATIONS FIXED ✅
+Fixed in audit session:
+- app.py line 527 — session restore on login
+- ui_analyse.py line 273 — Format with AI manual entry
+- ui_project.py line 235 — Save Project Details
+- ui_company.py lines 165, 202, 224 — logo upload, signature upload, Save Company Details
+- ui_register.py line 209 — Update RFI Status
+All st.rerun() calls now outside try/except blocks across all files.
+Pattern used: session state flag set inside try, st.rerun() called
+after try/except closes.
+
 ### MEDIUM PRIORITY — Fix after Tab 4
 
-**BUG-05** | app.py — _migrate_legacy_to_projects() runs every page load
+**BUG-05** | app.py — _migrate_legacy_to_projects() runs every page load ✅ RESOLVED
 Fix: Guard with st.session_state.get("_migration_done") flag.
+Status: Already fixed — _migration_done guard confirmed at
+lines 778-780 of app.py.
 
 **BUG-03** | app.py — load_register misuse ✅ RESOLVED
 Fixed as side effect of removing the workflow status bar — load_register and
@@ -937,3 +1111,6 @@ CLI block removed from generate_rfi.py this session.
 - No variation/change order link
 - No project archiving
 - No notifications for overdue RFIs
+KNOWN UI ISSUE: Streamlit built-in sidebar collapse arrow 
+cannot be fully hidden via CSS in v1.55.0. Deferred — 
+investigate browser DevTools to find exact selector.

@@ -128,7 +128,7 @@ def render_tab_crop(email: str):
                     st.markdown(
                         f'<iframe src="data:application/pdf;base64,{_b64}" '
                         f'width="100%" height="800px" '
-                        f'style="border:1px solid #1a2236;border-radius:8px;">'
+                        f'style="border:1px solid #e8eaed;border-radius:8px;">'
                         f'</iframe>',
                         unsafe_allow_html=True,
                     )
@@ -138,11 +138,35 @@ def render_tab_crop(email: str):
     # ── LEFT: controls ────────────────────────────────────────────────────────
     with left_col:
 
-        # ── Navigation row: ← | selectbox | metric | → ───────────────────────
-        nav1, sel_col, badge_col, nav2 = st.columns([1, 5, 2, 1])
+        # ── Page header ───────────────────────────────────────────────────────
+        total_snaps_done = sum(
+            1 for r in approved
+            if _local_snap_count(snaps_dir, get_rfi_num(r), max_snaps) > 0
+        )
+        _hdr_l, _hdr_r = st.columns([3, 1])
+        with _hdr_l:
+            st.markdown(
+                '<div style="font-size:18px;font-weight:500;color:#111111;">Crop &amp; Annotate</div>'
+                '<div style="font-size:12px;color:#6b7280;margin-top:3px;">'
+                'Upload a drawing screenshot for each approved RFI</div>',
+                unsafe_allow_html=True)
+        with _hdr_r:
+            st.markdown(
+                f'<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:20px;'
+                f'padding:4px 12px;font-size:12px;color:#1d4ed8;font-weight:500;'
+                f'text-align:center;margin-top:4px;">'
+                f'{total_snaps_done} of {len(approved)} RFIs have snapshots</div>',
+                unsafe_allow_html=True)
+
+        # ── Navigation row: ← → | selectbox | metric ─────────────────────────
+        nav1, nav2, sel_col, badge_col = st.columns([1, 1, 6, 2])
         with nav1:
             if st.button("←", disabled=(idx == 0), key="cp_prev", use_container_width=True):
                 st.session_state.crop_rfi_idx = idx - 1
+                st.rerun()
+        with nav2:
+            if st.button("→", disabled=(idx == len(approved) - 1), key="cp_next", use_container_width=True):
+                st.session_state.crop_rfi_idx = idx + 1
                 st.rerun()
         with sel_col:
             new_idx = st.selectbox("Select RFI", range(len(rfi_labels)),
@@ -151,36 +175,51 @@ def render_tab_crop(email: str):
             if new_idx != idx:
                 st.session_state.crop_rfi_idx = new_idx
                 st.rerun()
+            _desc_preview = issue.get("description", "")
+            st.markdown(
+                f'<div style="font-size:11px;color:#6b7280;margin-top:2px;">'
+                f'{_desc_preview[:60] + "…" if len(_desc_preview) > 60 else _desc_preview}'
+                f'</div>',
+                unsafe_allow_html=True)
         with badge_col:
             st.markdown(
-                f'<div style="text-align:center;padding:6px 4px;background:#0d1220;'
-                f'border-radius:6px;border:1px solid #1a2236;margin-top:4px;">'
-                f'<span style="color:#8892a4;font-size:11px;">snaps</span><br>'
-                f'<span style="color:#e8edf5;font-weight:700;font-size:15px;">'
+                f'<div style="text-align:center;padding:6px 4px;background:#f0f4ff;'
+                f'border-radius:6px;border:1px solid #bfdbfe;margin-top:4px;">'
+                f'<span style="color:#6b7280;font-size:10px;text-transform:uppercase;">Snaps</span><br>'
+                f'<span style="color:#1d4ed8;font-weight:700;font-size:16px;">'
                 f'{len(saved_snaps)}/{max_snaps}</span></div>',
                 unsafe_allow_html=True,
             )
-        with nav2:
-            if st.button("→", disabled=(idx == len(approved) - 1), key="cp_next", use_container_width=True):
-                st.session_state.crop_rfi_idx = idx + 1
-                st.rerun()
 
         # ── RFI description card ──────────────────────────────────────────────
-        st.markdown(f"""
-<div class="rfi-card" style="border-left:3px solid #1e40af;">
-  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;">
-    <strong style="color:#e8edf5;font-size:15px;">RFI-{rfi_num:03d}</strong>
-    <span style="color:#374151;font-size:12px;">{issue.get('category','')}</span>
-  </div>
-  <p style="color:#8892a4;font-size:13px;margin:8px 0 0;line-height:1.6;">
-    {issue.get('description','')[:300]}
-  </p>
-</div>""", unsafe_allow_html=True)
+        st.markdown(
+            f'<div style="background:#ffffff;border:1px solid #e8eaed;'
+            f'border-left:3px solid #1d4ed8;border-radius:10px;padding:12px 16px;margin-bottom:8px;">'
+            f'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;">'
+            f'<span style="color:#1d4ed8;font-size:13px;font-weight:600;">RFI-{rfi_num:03d}</span>'
+            f'<span style="background:#f0f4ff;color:#3b5bdb;font-size:10px;'
+            f'padding:2px 8px;border-radius:10px;">{issue.get("category","")}</span>'
+            f'</div>'
+            f'<div style="font-size:12px;color:#374151;line-height:1.6;margin-top:6px;">'
+            f'{issue.get("description","")}'
+            f'</div>'
+            f'</div>',
+            unsafe_allow_html=True)
 
         # ── Upload section ────────────────────────────────────────────────────
         if snap_name:
-            st.markdown('<div class="sec-lbl">Step 1 — Upload a screenshot of the area</div>',
-                        unsafe_allow_html=True)
+            st.markdown(
+                '<div style="background:#ffffff;border:1px solid #e8eaed;'
+                'border-radius:10px;padding:16px 18px;margin-top:0;">',
+                unsafe_allow_html=True)
+            st.markdown(
+                '<div style="display:flex;align-items:center;margin-bottom:6px;">'
+                '<span style="width:20px;height:20px;border-radius:50%;background:#1d4ed8;'
+                'color:#fff;font-size:10px;font-weight:600;display:inline-flex;'
+                'align-items:center;justify-content:center;flex-shrink:0;margin-right:8px;">1</span>'
+                '<div class="sec-lbl" style="margin:0;">Upload a screenshot of the area</div>'
+                '</div>',
+                unsafe_allow_html=True)
             st.caption("Take a screenshot of the relevant drawing area, then upload it here.")
             uploaded_shot = st.file_uploader(
                 "Upload screenshot (PNG / JPG)",
@@ -192,12 +231,24 @@ def render_tab_crop(email: str):
                 from PIL import Image as _PIL
                 shot_img = _PIL.open(uploaded_shot).convert("RGB")
 
-                st.markdown('<div class="sec-lbl">Step 2 — Preview</div>',
-                            unsafe_allow_html=True)
+                st.markdown(
+                    '<div style="display:flex;align-items:center;margin:12px 0 6px;">'
+                    '<span style="width:20px;height:20px;border-radius:50%;background:#1d4ed8;'
+                    'color:#fff;font-size:10px;font-weight:600;display:inline-flex;'
+                    'align-items:center;justify-content:center;flex-shrink:0;margin-right:8px;">2</span>'
+                    '<div class="sec-lbl" style="margin:0;">Preview</div>'
+                    '</div>',
+                    unsafe_allow_html=True)
                 st.image(shot_img, caption="Screenshot", use_container_width=True)
 
-                st.markdown('<div class="sec-lbl">Step 3 — Caption</div>',
-                            unsafe_allow_html=True)
+                st.markdown(
+                    '<div style="display:flex;align-items:center;margin:12px 0 6px;">'
+                    '<span style="width:20px;height:20px;border-radius:50%;background:#1d4ed8;'
+                    'color:#fff;font-size:10px;font-weight:600;display:inline-flex;'
+                    'align-items:center;justify-content:center;flex-shrink:0;margin-right:8px;">3</span>'
+                    '<div class="sec-lbl" style="margin:0;">Caption</div>'
+                    '</div>',
+                    unsafe_allow_html=True)
                 lbl_col, save_col = st.columns([2, 1])
                 with lbl_col:
                     label = st.selectbox(
@@ -232,13 +283,21 @@ def render_tab_crop(email: str):
                 if _save_ok:
                     st.rerun()
 
+            st.markdown('</div>', unsafe_allow_html=True)
             st.caption(f"Saves as: {snap_name}")
         else:
             st.success(f"✓ All {max_snaps} snapshots saved for RFI-{rfi_num:03d}.")
 
         # ── Saved snapshot gallery ────────────────────────────────────────────
         if saved_snaps:
-            st.markdown(f"**📷 Saved snapshots ({len(saved_snaps)})**")
+            st.markdown(
+                f'<div style="display:flex;align-items:center;'
+                f'justify-content:space-between;margin-bottom:8px;">'
+                f'<span style="font-size:13px;font-weight:500;color:#374151;">'
+                f'📷 Saved snapshots ({len(saved_snaps)})</span>'
+                f'<span style="font-size:11px;color:#9ca3af;">RFI-{rfi_num:03d}</span>'
+                f'</div>',
+                unsafe_allow_html=True)
             _pending_delete = st.session_state.get("t4_confirm_delete", "")
 
             _grid_snaps = list(saved_snaps)

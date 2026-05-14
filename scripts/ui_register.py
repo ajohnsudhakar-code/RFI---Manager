@@ -71,6 +71,13 @@ def render_tab_register(email: str):
         _open   = int((df["status"] == "Open").sum())      if "status" in df.columns else 0
         _resp   = int((df["status"] == "Responded").sum()) if "status" in df.columns else 0
         _closed = int((df["status"] == "Closed").sum())    if "status" in df.columns else 0
+        st.markdown(
+            '<div style="font-size:20px;font-weight:500;'
+            'color:#111111;margin-bottom:4px;">Register</div>'
+            '<div style="font-size:12px;color:#6b7280;'
+            'margin-bottom:16px;">All RFIs raised across '
+            'your projects — track status and download</div>',
+            unsafe_allow_html=True)
         sm1, sm2, sm3, sm4 = st.columns(4)
         sm1.metric("Total RFIs", _total)
         sm2.metric("Open",       _open)
@@ -193,11 +200,12 @@ def render_tab_register(email: str):
                                           key="reg_sel_status")
             with upd3:
                 st.write("")
-                if st.button("Update", key="reg_update", use_container_width=True):
+                if st.button("Update", key="reg_update",
+                             type="primary",
+                             use_container_width=True):
                     _upd_pid, _upd_rn, _upd_pname = pairs[sel_pair_idx]
                     update_project_register_status(_upd_pid, int(_upd_rn), sel_status, email)
-                    st.success(f"✓ RFI-{int(_upd_rn):03d} → {sel_status}")
-                    st.rerun()
+                    st.session_state["_reg_status_updated"] = f"✓ RFI-{int(_upd_rn):03d} → {sel_status}"
         else:
             st.info("No RFIs available to update.")
 
@@ -215,10 +223,11 @@ def render_tab_register(email: str):
             show.rename(columns=_DISPLAY_COLS).to_excel(_xlsx_buf, index=False, engine="openpyxl")
             _xlsx_buf.seek(0)
             st.download_button(
-                "⬇️  Download Register (.xlsx)",
+                "↓ Download Register (.xlsx)",
                 data=_xlsx_buf,
                 file_name="RFI_Register.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
                 key="reg_download",
             )
 
@@ -226,3 +235,7 @@ def render_tab_register(email: str):
         st.error("pandas not installed. Run: `pip install pandas openpyxl`")
     except Exception as e:
         st.error(f"Could not load register: {e}")
+    _reg_msg = st.session_state.pop("_reg_status_updated", None)
+    if _reg_msg:
+        st.success(_reg_msg)
+        st.rerun()
