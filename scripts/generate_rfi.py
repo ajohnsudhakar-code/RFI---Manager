@@ -301,8 +301,8 @@ def generate_rfi_document(config: dict) -> dict:
                 return ""
             if os.path.isabs(p) and os.path.exists(p):
                 return p
-            for base in ([SNAPSHOTS_DIR] if SNAPSHOTS_DIR else []) + [_HERE, _BASE_EARLY]:
-                c = os.path.join(base, p)
+            if SNAPSHOTS_DIR:
+                c = os.path.join(SNAPSHOTS_DIR, p)
                 if os.path.exists(c):
                     return c
             return p
@@ -320,11 +320,9 @@ def generate_rfi_document(config: dict) -> dict:
         SIGNATURE_IMG = _abs(_paths.get("signature", _co.get("signature_image", "")))
 
         if not LOGO_IMG or not os.path.exists(LOGO_IMG):
-            _default_logo = os.path.join(_HERE, "company_logo.png")
-            LOGO_IMG = _default_logo if os.path.exists(_default_logo) else ""
+            LOGO_IMG = ""
         if not SIGNATURE_IMG or not os.path.exists(SIGNATURE_IMG):
-            _default_sig = os.path.join(_HERE, "signature.png")
-            SIGNATURE_IMG = _default_sig if os.path.exists(_default_sig) else ""
+            SIGNATURE_IMG = ""
 
         # ── Dates / filename ──────────────────────────────────────────────────
         today     = date.today()

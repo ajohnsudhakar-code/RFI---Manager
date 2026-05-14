@@ -16,6 +16,7 @@ from data_layer import (
     load_project_sheet_map, save_project_sheet_map,
     get_rfi_num, resolve_pdf_path,
     load_project_scan_results, save_project_scan_results,
+    load_usage, load_scan_usage, increment_scan_usage,
 )
 
 _PRIORITY_OPTS = ["Critical", "High", "Normal", "Low"]
@@ -138,8 +139,61 @@ def render_tab_analyse(email: str):
                 run_ai = False
 
 
-        # ── AI SCAN ───────────────────────────────────────────────────────────
+        # ── Scan initiation ───────────────────────────────────────────────────
         if run_ai:
+            _existing = st.session_state.get("analysis_results", [])
+            if _existing:
+                st.session_state["t3_show_rescan_confirm"] = True
+            else:
+                _today  = datetime.date.today().isoformat()
+                _su     = load_scan_usage(email)
+                _count  = 0 if _su["ai_scans_date"] != _today else _su["ai_scans_today"]
+                _usage  = load_usage(email)
+                _limit  = 20 if _usage.get("is_paid") else 3
+                if _count >= _limit:
+                    _tier = "paid" if _usage.get("is_paid") else "free"
+                    st.error(
+                        f"Daily scan limit reached ({_count}/{_limit} scans used today "
+                        f"on your {_tier} plan). Limit resets tomorrow."
+                    )
+                else:
+                    st.session_state["t3_do_scan"] = True
+
+        # ── Protection 1: rescan confirmation ─────────────────────────────────
+        if st.session_state.get("t3_show_rescan_confirm"):
+            _n = len(st.session_state.get("analysis_results", []))
+            st.warning(
+                f"This project already has {_n} scan results from a previous scan. "
+                f"Re-scanning will add to existing results and use AI credits."
+            )
+            _rc1, _rc2 = st.columns(2)
+            with _rc1:
+                if st.button("Use Existing Results", key="t3_use_existing",
+                             use_container_width=True):
+                    st.session_state.pop("t3_show_rescan_confirm", None)
+                    st.rerun()
+            with _rc2:
+                if st.button("Re-scan Anyway", key="t3_rescan_anyway",
+                             type="primary", use_container_width=True):
+                    st.session_state.pop("t3_show_rescan_confirm", None)
+                    _today  = datetime.date.today().isoformat()
+                    _su     = load_scan_usage(email)
+                    _count  = 0 if _su["ai_scans_date"] != _today else _su["ai_scans_today"]
+                    _usage  = load_usage(email)
+                    _limit  = 20 if _usage.get("is_paid") else 3
+                    if _count >= _limit:
+                        _tier = "paid" if _usage.get("is_paid") else "free"
+                        st.error(
+                            f"Daily scan limit reached ({_count}/{_limit} scans used today "
+                            f"on your {_tier} plan). Limit resets tomorrow."
+                        )
+                    else:
+                        st.session_state["t3_do_scan"] = True
+                    st.rerun()
+
+        # ── AI SCAN ───────────────────────────────────────────────────────────
+        if st.session_state.get("t3_do_scan"):
+            st.session_state.pop("t3_do_scan", None)
             try:
                 import fitz
             except ImportError:
@@ -193,48 +247,65 @@ def render_tab_analyse(email: str):
             if not pages_content:
                 st.warning("No text found in PDF — this may be a scanned drawing. Use Manual Entry.")
             else:
-                all_issues    = []
-                batch_size    = 5
-                total_batches = (len(pages_content) + batch_size - 1) // batch_size
-                prog          = st.progress(0, text="Analyzing with AI…")
-                client        = _ant.Anthropic(api_key=api_key)
-                _focus        = st.session_state.get("t3_focus_prompt", "").strip()
-
-                for bi in range(0, len(pages_content), batch_size):
-                    batch_txt = "\n\n---\n\n".join(pages_content[bi : bi + batch_size])
-                    bn        = bi // batch_size + 1
-                    prog.progress(bn / total_batches, text=f"Analysing batch {bn} of {total_batches}…")
-                    try:
-                        msg = client.messages.create(
-                            model="claude-opus-4-6",
-                            max_tokens=4096,
-                            system=_SYSTEM_PROMPT,
-                            messages=[{"role": "user", "content": _build_user_prompt(batch_txt, _focus)}],
-                        )
-                        resp         = re.sub(r"```(?:json)?|```", "", msg.content[0].text).strip()
-                        batch_issues = json.loads(resp)
-                        if isinstance(batch_issues, list):
-                            for iss in batch_issues:
-                                iss["issue_number"] = len(all_issues) + 1
-                                all_issues.append(iss)
-                    except json.JSONDecodeError:
-                        pass
-                    except Exception as e:
-                        st.warning(f"Batch {bn} error: {e}")
-
-                prog.empty()
-                _existing = st.session_state.get("analysis_results", [])
-                _new = [{"issue": iss, "status": "pending"} for iss in all_issues]
-                _offset = len(_existing)
-                for _item in _new:
-                    _item["issue"]["issue_number"] += _offset
-                st.session_state.analysis_results = _existing + _new
-                save_project_scan_results(pid,
-                    st.session_state.analysis_results, email)
-                if all_issues:
-                    st.success(f"✓ AI found **{len(all_issues)} issues**. Review and approve below.")
+                # ── Protection 2: large PDF gate ──────────────────────────────
+                _n_pages = len(pages_content)
+                if _n_pages > 30 and not st.session_state.pop("t3_large_pdf_confirmed", False):
+                    _n_batches = (_n_pages + 4) // 5
+                    st.info(
+                        f"This PDF has {_n_pages} pages ({_n_batches} batches). "
+                        f"Large scans use more AI credits and take longer."
+                    )
+                    if st.button("Proceed with Full Scan", key="t3_large_pdf_go",
+                                 type="primary", use_container_width=True):
+                        st.session_state["t3_large_pdf_confirmed"] = True
+                        st.session_state["t3_do_scan"] = True
+                        st.rerun()
                 else:
-                    st.info("No issues detected — use Manual Entry if needed.")
+                    # ── Increment daily counter before first API call ─────────
+                    increment_scan_usage(email)
+
+                    all_issues    = []
+                    batch_size    = 5
+                    total_batches = (len(pages_content) + batch_size - 1) // batch_size
+                    prog          = st.progress(0, text="Analyzing with AI…")
+                    client        = _ant.Anthropic(api_key=api_key)
+                    _focus        = st.session_state.get("t3_focus_prompt", "").strip()
+
+                    for bi in range(0, len(pages_content), batch_size):
+                        batch_txt = "\n\n---\n\n".join(pages_content[bi : bi + batch_size])
+                        bn        = bi // batch_size + 1
+                        prog.progress(bn / total_batches, text=f"Analysing batch {bn} of {total_batches}…")
+                        try:
+                            msg = client.messages.create(
+                                model="claude-opus-4-6",
+                                max_tokens=4096,
+                                system=_SYSTEM_PROMPT,
+                                messages=[{"role": "user", "content": _build_user_prompt(batch_txt, _focus)}],
+                            )
+                            resp         = re.sub(r"```(?:json)?|```", "", msg.content[0].text).strip()
+                            batch_issues = json.loads(resp)
+                            if isinstance(batch_issues, list):
+                                for iss in batch_issues:
+                                    iss["issue_number"] = len(all_issues) + 1
+                                    all_issues.append(iss)
+                        except json.JSONDecodeError:
+                            pass
+                        except Exception as e:
+                            st.warning(f"Batch {bn} error: {e}")
+
+                    prog.empty()
+                    _existing = st.session_state.get("analysis_results", [])
+                    _new = [{"issue": iss, "status": "pending"} for iss in all_issues]
+                    _offset = len(_existing)
+                    for _item in _new:
+                        _item["issue"]["issue_number"] += _offset
+                    st.session_state.analysis_results = _existing + _new
+                    save_project_scan_results(pid,
+                        st.session_state.analysis_results, email)
+                    if all_issues:
+                        st.success(f"✓ AI found **{len(all_issues)} issues**. Review and approve below.")
+                    else:
+                        st.info("No issues detected — use Manual Entry if needed.")
 
         with tab_manual:
             sheet_map = load_project_sheet_map(pid, email)

@@ -447,6 +447,45 @@ def increment_usage(email: str):
         _warn("Could not connect to database. Working in offline mode.")
 
 
+def load_scan_usage(email: str) -> dict:
+    """Return ai_scans_today and ai_scans_date for the user."""
+    default = {"ai_scans_today": 0, "ai_scans_date": ""}
+    sb = _get_storage_client()
+    if not sb:
+        return default
+    try:
+        res = (sb.table("rfi_usage")
+                 .select("ai_scans_today,ai_scans_date")
+                 .eq("email", email)
+                 .execute())
+        if res.data:
+            return {
+                "ai_scans_today": res.data[0].get("ai_scans_today", 0) or 0,
+                "ai_scans_date":  res.data[0].get("ai_scans_date",  "") or "",
+            }
+    except Exception as e:
+        _log_error("load_scan_usage", e)
+    return default
+
+
+def increment_scan_usage(email: str):
+    """Increment ai_scans_today, resetting the counter if the date changed."""
+    sb = _get_storage_client()
+    if not sb:
+        return
+    today = date.today().isoformat()
+    try:
+        su    = load_scan_usage(email)
+        count = 0 if su["ai_scans_date"] != today else su["ai_scans_today"]
+        sb.table("rfi_usage").upsert({
+            "email":          email,
+            "ai_scans_today": count + 1,
+            "ai_scans_date":  today,
+        }, on_conflict="email").execute()
+    except Exception as e:
+        _log_error("increment_scan_usage", e)
+
+
 # ── ASSETS ────────────────────────────────────────────────────────────────────
 def get_asset_bytes(email: str, asset_name: str):
     sb = _get_storage_client()
@@ -456,9 +495,6 @@ def get_asset_bytes(email: str, asset_name: str):
         except Exception as e:
             if not _is_not_found_error(e):
                 _log_error("get_asset_bytes", e)
-    local = BASE / "scripts" / asset_name
-    if local.exists():
-        return local.read_bytes()
     return None
 
 
@@ -469,25 +505,11 @@ def upload_asset(email: str, asset_name: str, data: bytes):
             sb.storage.from_("rfi-manager-files").upload(
                 f"{email_to_folder(email)}/{asset_name}", data, {"content-type": "image/png", "upsert": "true"}
             )
-            # Supabase succeeded — delete any stale local copy so fallback
-            # cannot return outdated data
-            try:
-                _stale = BASE / "scripts" / asset_name
-                if _stale.exists():
-                    _stale.unlink()
-            except Exception:
-                pass
-            return  # skip local write
+            return
         except Exception as e:
             _log_error("upload_asset[supabase]", e)
-            # Fall through to local write
-    local = BASE / "scripts" / asset_name
-    try:
-        local.parent.mkdir(parents=True, exist_ok=True)
-        local.write_bytes(data)
-    except Exception as e:
-        _log_error("upload_asset[local]", e)
-        _warn("Could not save data. Check error_log.txt for details.")
+    _warn("Your logo/signature could not be saved. "
+          "Please check your internet connection and try again.")
 
 
 def upload_project_pdf(email: str, pid: str, filename: str, data: bytes) -> bool:
