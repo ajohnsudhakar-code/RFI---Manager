@@ -70,6 +70,8 @@ textColor=#111111
 |---|---|---|
 | streamlit | 1.55.0 | Never upgrade — UI layout and RerunException behaviour tied to this version |
 | supabase | 2.10.0 | Never upgrade — newer versions crash on Python 3.14 (SyncPostgrestClient.__init__() error) |
+| AI model | claude-opus-4-6 | Verified live May 2026 — do not change without testing |
+| AI scan limits | FREE 3/day, PAID 20/day | Stored in rfi_usage.ai_scans_today + ai_scans_date |
 
 ---
 
@@ -152,7 +154,9 @@ Region: ap-southeast-1
 Streamlit Cloud URL: https://rfi-manager.streamlit.app/
 Supabase Site URL: https://rfi-manager.streamlit.app/
 Supabase Redirect URL: https://rfi-manager.streamlit.app/
+RLS Status: All 8 tables have email-scoped RLS policies as of this session. Verified via pg_policies query.
 Reset email template: uses token_hash query param (not hash fragment) — required for Streamlit compatibility.
+Note: Add http://localhost:8501 to Supabase Redirect URLs for local development — password reset and email confirmation links need it.
 Auth: Email + Password — PERMANENT. Never change this.
 Email Confirmation: Currently OFF (for local testing).
 MUST be turned ON in Supabase dashboard before deployment:
@@ -815,6 +819,11 @@ save_project_register() is local-only but is not in the critical path for status
 - [x] Turn on email confirmation in Supabase dashboard (Authentication → Sign In / Providers → Confirm email → ON)
 - [x] Deploy to Streamlit Cloud
 - [x] Test Sign Up flow with a real new user email
+- [x] RLS policies verified on all 8 Supabase tables (pg_policies query)
+- [x] Cross-tenant asset leak fixed — local file fallbacks removed from data_layer.py and generate_rfi.py
+- [x] AI scan cost protections added — rescan confirmation, large PDF gate, daily scan counter
+- [x] AI model claude-opus-4-6 verified live in production
+- [ ] Add http://localhost:8501 to Supabase Redirect URLs for local development testing
 
 ---
 
@@ -1036,6 +1045,50 @@ that also starts with a known tab prefix (t2_, t3_, t5_,
 gen_, dl_, ul_, lbl_, sv_, del_).
 _old_pid captured before pop loop so pid is available
 for matching.
+
+---
+
+## SECURITY FIXES — Completed
+
+**S1** | Cross-tenant asset isolation — data_layer.py get_asset_bytes()
+Removed local file fallback (BASE/scripts/company_logo.png etc.).
+On Streamlit Cloud all users share the container filesystem — local
+fallback returned wrong user's logo/signature.
+Fix: Return None when Supabase read fails. No asset is safer than the
+wrong user's asset.
+
+**S2** | Cross-tenant asset write — data_layer.py upload_asset()
+Removed stale-file cleanup and local write fallback.
+Fix: Return on Supabase success; call _warn() on failure with a clear
+user-facing message. Never write assets to shared local disk.
+
+**S3** | Cross-tenant snapshot isolation — generate_rfi.py _abs()
+Removed _HERE and _BASE_EARLY directory fallbacks from image resolution.
+Fix: Only SNAPSHOTS_DIR (per-user path) is searched. Return bare filename
+if not found; never look in shared script directories.
+
+**S4** | Cross-tenant logo/signature defaults — generate_rfi.py
+Removed _HERE-based default paths for LOGO_IMG and SIGNATURE_IMG.
+Fix: Set to empty string when Supabase path is missing or invalid.
+Word doc renders without image rather than showing another user's logo.
+
+**S5** | AI scan cost protections — ui_analyse.py (3 protections)
+Protection 1: Scan caching — existing results trigger "Use Existing /
+Re-scan Anyway" confirmation before any API call is made.
+Protection 2: Large PDF gate — PDFs > 30 pages show credit warning and
+batch count; user must confirm before scan runs.
+Protection 3: Daily scan counter — FREE tier: 3 scans/day, PAID: 20/day.
+Counter stored in rfi_usage table (ai_scans_today + ai_scans_date columns).
+Supabase offline → counter returns 0 → scans allowed (acceptable trade-off).
+
+**S6** | Supabase schema — rfi_usage table
+Added two columns (run in SQL Editor before deploying):
+    ALTER TABLE rfi_usage ADD COLUMN IF NOT EXISTS ai_scans_today integer DEFAULT 0;
+    ALTER TABLE rfi_usage ADD COLUMN IF NOT EXISTS ai_scans_date  text    DEFAULT '';
+New data_layer functions: load_scan_usage(email) and increment_scan_usage(email).
+Both follow the existing load_usage / increment_usage pattern.
+
+---
 
 **BUG-01** | data_layer.py — _migrate_legacy_to_projects() ✅ RESOLVED
 References CONTACTS_JSON which was deleted. NameError on every new user login.

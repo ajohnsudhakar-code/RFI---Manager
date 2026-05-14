@@ -6,7 +6,7 @@ import base64
 import streamlit as st
 
 from data_layer import (
-    load_cfg, save_cfg, load_company,
+    load_cfg, save_cfg,
     get_asset_bytes, upload_asset,
 )
 
@@ -49,16 +49,27 @@ def render_tab_company(email: str):
             'Almost done — complete your company details below.</div>',
             unsafe_allow_html=True)
 
-    # Seed form session state
-    st.session_state.setdefault("co_name",    co.get("name", "") or orig_c.get("company", ""))
-    st.session_state.setdefault("co_address", co.get("address", ""))
-    st.session_state.setdefault("co_country", co.get("country", ""))
-    st.session_state.setdefault("co_postcode", co.get("postcode", ""))
-    st.session_state.setdefault("co_website", co.get("website", ""))
-    st.session_state.setdefault("orig_name",  orig_c.get("name", ""))
-    st.session_state.setdefault("orig_title", orig_c.get("title", ""))
-    st.session_state.setdefault("orig_email", orig_c.get("email", ""))
-    st.session_state.setdefault("orig_phone", orig_c.get("phone", ""))
+    # View mode: always sync from freshly-loaded cfg; edit mode: preserve in-progress edits
+    if not _edit_mode:
+        st.session_state["co_name"]     = co.get("name", "") or orig_c.get("company", "")
+        st.session_state["co_address"]  = co.get("address", "")
+        st.session_state["co_country"]  = co.get("country", "")
+        st.session_state["co_postcode"] = co.get("postcode", "")
+        st.session_state["co_website"]  = co.get("website", "")
+        st.session_state["orig_name"]   = orig_c.get("name", "")
+        st.session_state["orig_title"]  = orig_c.get("title", "")
+        st.session_state["orig_email"]  = orig_c.get("email", "")
+        st.session_state["orig_phone"]  = orig_c.get("phone", "")
+    else:
+        st.session_state.setdefault("co_name",    co.get("name", "") or orig_c.get("company", ""))
+        st.session_state.setdefault("co_address", co.get("address", ""))
+        st.session_state.setdefault("co_country", co.get("country", ""))
+        st.session_state.setdefault("co_postcode", co.get("postcode", ""))
+        st.session_state.setdefault("co_website", co.get("website", ""))
+        st.session_state.setdefault("orig_name",  orig_c.get("name", ""))
+        st.session_state.setdefault("orig_title", orig_c.get("title", ""))
+        st.session_state.setdefault("orig_email", orig_c.get("email", ""))
+        st.session_state.setdefault("orig_phone", orig_c.get("phone", ""))
 
     col_form, col_assets = st.columns([3, 2], gap="large")
 
@@ -145,13 +156,16 @@ def render_tab_company(email: str):
                 unsafe_allow_html=True)
         else:
             st.markdown(
-                '<div style="height:120px;background:#0d1220;border:2px dashed #1a2236;'
+                '<div style="height:120px;background:#f8f9fa;border:2px dashed #d1d5db;'
                 'border-radius:10px;display:flex;align-items:center;justify-content:center;'
-                'color:#374151;font-size:13px;">No logo uploaded — upload PNG or JPG</div>',
+                'color:#6b7280;font-size:13px;">No logo uploaded — upload PNG or JPG</div>',
                 unsafe_allow_html=True)
 
-        up_logo = st.file_uploader("Upload logo PNG/JPG", type=["png", "jpg", "jpeg"],
-                                   key="up_logo", label_visibility="collapsed")
+        if not _logo_bytes or _edit_mode:
+            up_logo = st.file_uploader("Upload logo PNG/JPG", type=["png", "jpg", "jpeg"],
+                                       key="up_logo", label_visibility="collapsed")
+        else:
+            up_logo = None
         if up_logo:
             try:
                 from PIL import Image as _PIL
@@ -183,13 +197,16 @@ def render_tab_company(email: str):
                 unsafe_allow_html=True)
         else:
             st.markdown(
-                '<div style="height:120px;background:#0d1220;border:2px dashed #1a2236;'
+                '<div style="height:120px;background:#f8f9fa;border:2px dashed #d1d5db;'
                 'border-radius:10px;display:flex;align-items:center;justify-content:center;'
-                'color:#374151;font-size:13px;">No signature uploaded — upload PNG or JPG</div>',
+                'color:#6b7280;font-size:13px;">No signature uploaded — upload PNG or JPG</div>',
                 unsafe_allow_html=True)
 
-        up_sig = st.file_uploader("Upload signature PNG/JPG", type=["png", "jpg", "jpeg"],
-                                  key="up_sig", label_visibility="collapsed")
+        if not _sig_bytes or _edit_mode:
+            up_sig = st.file_uploader("Upload signature PNG/JPG", type=["png", "jpg", "jpeg"],
+                                      key="up_sig", label_visibility="collapsed")
+        else:
+            up_sig = None
         if up_sig:
             try:
                 from PIL import Image as _PIL
@@ -206,25 +223,33 @@ def render_tab_company(email: str):
     st.markdown("---")
     if _edit_mode:
         if st.button("💾  Save Company Details", type="primary", use_container_width=True):
-            try:
-                cfg["company"] = {
-                    "name": co_name, "address": co_address,
-                    "country": co_country, "postcode": co_postcode, "website": co_website,
-                }
-                cfg["originator"] = {
-                    "name": orig_name, "title": orig_title,
-                    "email": orig_email, "phone": orig_phone,
-                    "company": co_name,
-                }
-                save_cfg(cfg, email)
-                st.session_state.tab_company_done = True
-                st.session_state["co_edit_mode"] = False
-                st.session_state["_company_saved_ok"] = True
-                st.session_state["_company_do_rerun"] = True
-            except Exception as _save_err:
-                st.error(f"Save failed: {_save_err}")
-            if st.session_state.pop("_company_do_rerun", False):
-                st.rerun()
+            _missing = []
+            if not co_name.strip():
+                _missing.append("Company Name")
+            if not orig_name.strip():
+                _missing.append("Originator Full Name")
+            if _missing:
+                st.error(f"Required field(s) missing: {', '.join(_missing)}")
+            else:
+                try:
+                    cfg["company"] = {
+                        "name": co_name, "address": co_address,
+                        "country": co_country, "postcode": co_postcode, "website": co_website,
+                    }
+                    cfg["originator"] = {
+                        "name": orig_name, "title": orig_title,
+                        "email": orig_email, "phone": orig_phone,
+                        "company": co_name,
+                    }
+                    save_cfg(cfg, email)
+                    st.session_state.tab_company_done = True
+                    st.session_state["co_edit_mode"] = False
+                    st.session_state["_company_saved_ok"] = True
+                    st.session_state["_company_do_rerun"] = True
+                except Exception as _save_err:
+                    st.error(f"Save failed: {_save_err}")
+                if st.session_state.pop("_company_do_rerun", False):
+                    st.rerun()
 
     if st.session_state.pop("_company_saved_ok", False):
         st.success("Company details saved successfully.")
