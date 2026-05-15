@@ -26,7 +26,7 @@ def render_tab_company(email: str):
 
     # Determine edit mode default: view when tab done and data present, edit otherwise
     _tab_done = st.session_state.get("tab_company_done", False)
-    st.session_state.setdefault("co_edit_mode", not (_tab_done and _all_filled))
+    st.session_state.setdefault("co_edit_mode", not _all_filled)
     _edit_mode = st.session_state["co_edit_mode"]
 
     # ── Status banner ─────────────────────────────────────────────────────────
@@ -171,9 +171,9 @@ def render_tab_company(email: str):
                 from PIL import Image as _PIL
                 buf = io.BytesIO()
                 _PIL.open(up_logo).convert("RGBA").save(buf, format="PNG")
-                upload_asset(email, "company_logo.png", buf.getvalue())
-                st.session_state["_logo_saved_ok"] = True
-                st.session_state["_logo_do_rerun"] = True
+                if upload_asset(email, "company_logo.png", buf.getvalue()):
+                    st.session_state["_logo_saved_ok"] = True
+                    st.session_state["_logo_do_rerun"] = True
             except Exception as e:
                 st.error(f"Could not save logo: {e}")
             if st.session_state.pop("_logo_do_rerun", False):
@@ -212,9 +212,9 @@ def render_tab_company(email: str):
                 from PIL import Image as _PIL
                 buf = io.BytesIO()
                 _PIL.open(up_sig).convert("RGBA").save(buf, format="PNG")
-                upload_asset(email, "signature.png", buf.getvalue())
-                st.session_state["_sig_saved_ok"] = True
-                st.session_state["_sig_do_rerun"] = True
+                if upload_asset(email, "signature.png", buf.getvalue()):
+                    st.session_state["_sig_saved_ok"] = True
+                    st.session_state["_sig_do_rerun"] = True
             except Exception as e:
                 st.error(f"Could not save signature: {e}")
             if st.session_state.pop("_sig_do_rerun", False):

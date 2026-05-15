@@ -498,18 +498,19 @@ def get_asset_bytes(email: str, asset_name: str):
     return None
 
 
-def upload_asset(email: str, asset_name: str, data: bytes):
+def upload_asset(email: str, asset_name: str, data: bytes) -> bool:
     sb = _get_storage_client()
     if sb:
         try:
             sb.storage.from_("rfi-manager-files").upload(
                 f"{email_to_folder(email)}/{asset_name}", data, {"content-type": "image/png", "upsert": "true"}
             )
-            return
+            return True
         except Exception as e:
             _log_error("upload_asset[supabase]", e)
     _warn("Your logo/signature could not be saved. "
           "Please check your internet connection and try again.")
+    return False
 
 
 def upload_project_pdf(email: str, pid: str, filename: str, data: bytes) -> bool:
