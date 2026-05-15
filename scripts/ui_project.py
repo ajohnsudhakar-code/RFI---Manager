@@ -84,6 +84,8 @@ def render_tab_project(email: str):
                 st.session_state.pop(_rk, None)
         st.session_state["_pid_is_new_unsaved"] = True
         st.rerun()
+    if st.session_state.get("_project_delete_err"):
+        st.error(st.session_state.pop("_project_delete_err"))
 
     pid = st.session_state.get("current_project_id", "")
     if not pid:
@@ -429,7 +431,7 @@ def render_tab_project(email: str):
                         st.session_state.pop("_sb_label_pids", None)
                         st.session_state["_project_deleted"] = True
                     else:
-                        st.error("❌ Could not delete project. Please try again.")
+                        st.session_state["_project_delete_err"] = "❌ Could not delete project. Please try again."
                     st.rerun()
             with _dc2:
                 if st.button("✕ Cancel", key="t2_del_proj_cancel", use_container_width=True):
