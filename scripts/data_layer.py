@@ -824,7 +824,7 @@ def load_project_clients(pid: str, email: str = "") -> list:
 def save_project_clients(pid: str, clients: list, email: str = ""):
     sb = _get_storage_client()
     if not sb:
-        _warn("Not connected to database — client list could not be saved.")
+        _warn("Not connected to database — recipient list could not be saved.")
         return
     if sb and email and pid:
         try:

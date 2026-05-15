@@ -48,7 +48,7 @@ def _client_form(prefix: str, defaults: dict | None = None) -> dict | None:
             phone = st.text_input("Phone", value=d.get("phone", ""))
 
         save_col, cancel_col, _ = st.columns([1, 1, 4])
-        submitted = save_col.form_submit_button("💾 Save Client",  type="primary")
+        submitted = save_col.form_submit_button("💾 Save Recipient",  type="primary")
         cancelled = cancel_col.form_submit_button("✕ Cancel")
 
     if cancelled:
@@ -249,7 +249,7 @@ def render_tab_project(email: str):
                 if st.session_state.pop("_project_do_rerun", False):
                     st.rerun()
 
-    # ── Section 2: Clients ───────────────────────────────────────────────────
+    # ── Section 2: Recipients ────────────────────────────────────────────────
     st.markdown("---")
     if _is_new_pid:
         st.markdown(
@@ -261,10 +261,10 @@ def render_tab_project(email: str):
         form_mode = st.session_state.get("t2_client_form_mode")  # None | ("new",) | ("edit", idx)
         _ch_l, _ch_r = st.columns([5, 1])
         with _ch_l:
-            st.markdown("## Clients")
+            st.markdown("## Recipients")
         with _ch_r:
             if not form_mode or form_mode[0] == "edit":
-                if st.button("＋ Add Client", key="t2_add_client_btn", type="primary"):
+                if st.button("＋ Add Recipient", key="t2_add_client_btn", type="primary"):
                     st.session_state["t2_client_form_mode"] = ("new",)
                     st.rerun()
         if st.session_state.get("_client_saved_ok"):
@@ -274,11 +274,11 @@ def render_tab_project(email: str):
         if st.session_state.get("_client_delete_err"):
             st.error(st.session_state.pop("_client_delete_err"))
 
-        # ── Client table ─────────────────────────────────────────────────────
+        # ── Recipient table ───────────────────────────────────────────────────
         if not clients and not form_mode:
             st.markdown(
                 '<div class="info-box warn" style="text-align:center;padding:20px;">'
-                '👥 &nbsp;No clients yet — add your first client below.'
+                '👥 &nbsp;No recipients yet — add your first recipient below.'
                 '</div>',
                 unsafe_allow_html=True,
             )
@@ -297,7 +297,7 @@ def render_tab_project(email: str):
                     unsafe_allow_html=True)
             for i, client in enumerate(clients):
                 if form_mode and form_mode[0] == "edit" and form_mode[1] == i:
-                    st.markdown(f"**Edit client: {client.get('company','')}**")
+                    st.markdown(f"**Edit recipient: {client.get('company','')}**")
                     result = _client_form(prefix=f"edit_{i}", defaults=client)
                     if result == "cancel":
                         st.session_state.pop("t2_client_form_mode", None)
@@ -309,7 +309,7 @@ def render_tab_project(email: str):
                             st.session_state.pop("t2_client_form_mode", None)
                             st.session_state["_client_saved_ok"] = f"✓ Updated **{result['company']}**."
                         except Exception as _upd_err:
-                            st.error(f"❌ Could not update client: {_upd_err}")
+                            st.error(f"❌ Could not update recipient: {_upd_err}")
                             st.stop()
                         st.rerun()
                 else:
@@ -345,7 +345,7 @@ def render_tab_project(email: str):
 
         _pending_del_idx = st.session_state.get("t2_confirm_del_client")
         if _pending_del_idx is not None and 0 <= _pending_del_idx < len(clients):
-            _del_company = clients[_pending_del_idx].get("company", "this client")
+            _del_company = clients[_pending_del_idx].get("company", "this recipient")
             st.warning(f"Delete **{_del_company}**? This cannot be undone.")
             _dcc1, _dcc2, _ = st.columns([1, 1, 4])
             with _dcc1:
@@ -358,7 +358,7 @@ def render_tab_project(email: str):
                         st.session_state.pop("t2_client_form_mode", None)
                         st.session_state["_client_deleted_ok"] = f"Deleted **{_del_company}**."
                     except Exception as _del_err:
-                        st.session_state["_client_delete_err"] = f"❌ Could not delete client: {_del_err}"
+                        st.session_state["_client_delete_err"] = f"❌ Could not delete recipient: {_del_err}"
                     st.session_state.pop("t2_confirm_del_client", None)
                     st.rerun()
             with _dcc2:
@@ -367,7 +367,7 @@ def render_tab_project(email: str):
                     st.rerun()
 
         if form_mode and form_mode[0] == "new":
-            st.markdown("**New Client**")
+            st.markdown("**New Recipient**")
             result = _client_form(prefix="new")
             if result == "cancel":
                 st.session_state.pop("t2_client_form_mode", None)
@@ -380,7 +380,7 @@ def render_tab_project(email: str):
                     st.session_state.pop("t2_client_form_mode", None)
                     st.session_state["_client_saved_ok"] = f"✓ Added **{result['company']}**."
                 except Exception as _add_err:
-                    st.error(f"❌ Could not save client: {_add_err}")
+                    st.error(f"❌ Could not save recipient: {_add_err}")
                     st.stop()
                 st.rerun()
 

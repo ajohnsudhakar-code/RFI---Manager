@@ -45,7 +45,7 @@ def render_tab_generate(email: str):
         '<div style="font-size:12px;color:#6b7280;'
         'margin-top:-8px;margin-bottom:8px;">'
         'Generate a Word document for each approved '
-        'RFI and send to your client</div>',
+        'RFI and send to your recipient</div>',
         unsafe_allow_html=True)
 
     if not approved:
@@ -66,11 +66,11 @@ def render_tab_generate(email: str):
     gm1, gm2, gm3 = st.columns(3)
     gm1.metric("RFIs",    len(approved))
     gm2.metric("Project", pcfg.get("name", "—"))
-    gm3.metric("Clients", len(clients))
+    gm3.metric("Recipients", len(clients))
 
     if not clients:
         st.markdown(
-            '<div class="info-box warn">Please add clients in '
+            '<div class="info-box warn">Please add recipients in '
             '<strong>Project Setup</strong> first.</div>',
             unsafe_allow_html=True)
         return
