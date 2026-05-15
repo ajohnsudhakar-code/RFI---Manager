@@ -113,6 +113,7 @@ def render_tab_project(email: str):
         st.session_state[f"t2_edit_mode_{pid}"]    = _is_new   # True for new, False for existing
         if _is_new:
             st.session_state.pop(f"t2_uploaded_pdf_{pid}", None)
+            st.session_state.pop(f"t2_pdf_cloud_ok_{pid}", None)
             st.session_state["t2_uploader_gen"] = st.session_state.get("t2_uploader_gen", 0) + 1
         st.session_state["t2_loaded_pid"]   = pid
 
@@ -172,16 +173,22 @@ def render_tab_project(email: str):
                 dest = drawings / up_pdf.name
                 dest.write_bytes(_pdf_bytes)
                 st.session_state[f"t2_uploaded_pdf_{pid}"] = up_pdf.name
-                if not upload_project_pdf(email, pid, up_pdf.name, _pdf_bytes):
-                    st.warning("⚠ Cloud backup failed — PDF saved locally. Check your connection.")
-            try:
-                import fitz as _fitz
-                doc = _fitz.open(str(dest))
-                pc  = len(doc)
-                doc.close()
-                st.success(f"✓ Uploaded **{up_pdf.name}** ({pc} pages) — click Save to confirm.")
-            except Exception:
-                st.success(f"✓ Uploaded **{up_pdf.name}** — click Save to confirm.")
+                _cloud_ok = upload_project_pdf(email, pid, up_pdf.name, _pdf_bytes)
+                st.session_state[f"t2_pdf_cloud_ok_{pid}"] = _cloud_ok
+            if not _cloud_ok:
+                st.error(
+                    "⚠ PDF not saved to cloud storage. On Streamlit Cloud the file will be "
+                    "lost after the next restart. Please re-upload the PDF before saving."
+                )
+            else:
+                try:
+                    import fitz as _fitz
+                    doc = _fitz.open(str(dest))
+                    pc  = len(doc)
+                    doc.close()
+                    st.success(f"✓ Uploaded **{up_pdf.name}** ({pc} pages) — click Save to confirm.")
+                except Exception:
+                    st.success(f"✓ Uploaded **{up_pdf.name}** — click Save to confirm.")
 
         pdf_files = sorted(drawings.glob("*.pdf"))
         _is_new_proj = st.session_state.get("_pid_is_new_unsaved", False)
@@ -214,26 +221,33 @@ def render_tab_project(email: str):
     st.markdown("---")
     if _t2_edit:
         if st.button("💾  Save Project Details", type="primary", use_container_width=True, key="t2_save_proj"):
-            try:
-                pcfg["name"]           = proj_name.strip()
-                pcfg["address"]        = site_addr.strip()
-                pcfg["project_number"] = proj_number.strip()
-                if sel_pdf:
-                    pcfg["pdf"] = str(Path("drawings") / sel_pdf)
-                else:
-                    pcfg["pdf"] = ""
-                save_project_cfg(pid, pcfg, email)
-                st.session_state["current_project_id"] = pid
-                st.session_state["_project_saved_ok"]  = True
-                st.session_state["_project_do_rerun"]  = True
-                st.session_state[f"t2_edit_mode_{pid}"] = False
-                st.session_state.pop("_pid_is_new_unsaved", None)
-                st.session_state.pop(f"t2_uploaded_pdf_{pid}", None)
-            except Exception as _save_err:
-                st.error(f"❌ Save failed: {type(_save_err).__name__}: {_save_err}")
-                st.stop()
-            if st.session_state.pop("_project_do_rerun", False):
-                st.rerun()
+            _pdf_cloud_failed = st.session_state.get(f"t2_pdf_cloud_ok_{pid}") is False
+            if not proj_name.strip():
+                st.error("❌ Project Name is required.")
+            elif _pdf_cloud_failed:
+                st.error("❌ The PDF was not saved to cloud storage. Please re-upload the PDF before saving.")
+            else:
+                try:
+                    pcfg["name"]           = proj_name.strip()
+                    pcfg["address"]        = site_addr.strip()
+                    pcfg["project_number"] = proj_number.strip()
+                    if sel_pdf:
+                        pcfg["pdf"] = str(Path("drawings") / sel_pdf)
+                    else:
+                        pcfg["pdf"] = ""
+                    save_project_cfg(pid, pcfg, email)
+                    st.session_state["current_project_id"] = pid
+                    st.session_state["_project_saved_ok"]  = True
+                    st.session_state["_project_do_rerun"]  = True
+                    st.session_state[f"t2_edit_mode_{pid}"] = False
+                    st.session_state.pop("_pid_is_new_unsaved", None)
+                    st.session_state.pop(f"t2_uploaded_pdf_{pid}", None)
+                    st.session_state.pop(f"t2_pdf_cloud_ok_{pid}", None)
+                except Exception as _save_err:
+                    st.error(f"❌ Save failed: {type(_save_err).__name__}: {_save_err}")
+                    st.stop()
+                if st.session_state.pop("_project_do_rerun", False):
+                    st.rerun()
 
     # ── Section 2: Clients ───────────────────────────────────────────────────
     st.markdown("---")
