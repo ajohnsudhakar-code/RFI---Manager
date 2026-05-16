@@ -1,7 +1,7 @@
 """
 ui_crop.py — Tab 4: Crop and Annotate
 """
-import os, io, json, base64
+import io, json, base64
 import streamlit as st
 from pathlib import Path
 
@@ -174,10 +174,12 @@ def render_tab_crop(email: str):
         with nav1:
             if st.button("←", disabled=(idx == 0), key="cp_prev", use_container_width=True):
                 st.session_state.crop_rfi_idx = idx - 1
+                st.session_state.pop("t4_confirm_delete", None)
                 st.rerun()
         with nav2:
             if st.button("→", disabled=(idx == len(approved) - 1), key="cp_next", use_container_width=True):
                 st.session_state.crop_rfi_idx = idx + 1
+                st.session_state.pop("t4_confirm_delete", None)
                 st.rerun()
         with sel_col:
             new_idx = st.selectbox("Select RFI", range(len(rfi_labels)),
@@ -185,6 +187,7 @@ def render_tab_crop(email: str):
                                    label_visibility="collapsed")
             if new_idx != idx:
                 st.session_state.crop_rfi_idx = new_idx
+                st.session_state.pop("t4_confirm_delete", None)
                 st.rerun()
             _desc_preview = issue.get("description", "")
             st.markdown(
@@ -282,13 +285,21 @@ def render_tab_crop(email: str):
                         dest = snaps_dir / snap_name
                         dest.write_bytes(buf.getvalue())
                         if not upload_project_snapshot(email, pid, snap_name, buf.getvalue()):
-                            st.warning("⚠ Cloud backup failed — snapshot saved locally. Check your connection.")
-                        caps = load_project_captions(pid, email)
-                        if label and label != "None":
-                            caps[snap_name] = label
-                        save_project_captions(pid, caps, email)
-                        st.success(f"✓ {snap_name} saved.")
-                        _save_ok = True
+                            try:
+                                dest.unlink()
+                            except Exception:
+                                pass
+                            st.error(
+                                f"⚠ {snap_name} could not be saved to cloud. "
+                                "Please check your connection and try again."
+                            )
+                        else:
+                            caps = load_project_captions(pid, email)
+                            if label and label != "None":
+                                caps[snap_name] = label
+                            save_project_captions(pid, caps, email)
+                            st.success(f"✓ {snap_name} saved.")
+                            _save_ok = True
                     except Exception as e:
                         st.error(f"Save failed: {e}")
                 if _save_ok:
