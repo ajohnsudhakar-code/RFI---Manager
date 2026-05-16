@@ -11,21 +11,16 @@ try:
 except ImportError:
     _pdf_viewer_ok = False
 
-try:
-    from streamlit_cropper import st_cropper
-    _cropper_ok = True
-except ImportError:
-    _cropper_ok = False
-
 from data_layer import (
     load_cfg,
     load_project_cfg, load_project_approved,
     proj_snapshots_dir,
     get_rfi_num, add_label_to_image,
-    pdf_page_to_pil, resolve_pdf_path,
+    resolve_pdf_path,
     upload_project_snapshot, delete_project_snapshot,
     sync_snapshots_from_supabase,
     load_project_captions, save_project_captions,
+    load_project_sheet_map,
 )
 
 # ── Local snapshot helpers (per-project filesystem) ──────────────────────────
@@ -88,7 +83,9 @@ def render_tab_crop(email: str):
     max_snaps  = int(cfg["settings"].get("max_snapshots", 5))
     pdf_path   = resolve_pdf_path(pid, email)
     snaps_dir  = proj_snapshots_dir(pid, email)
-    sync_snapshots_from_supabase(pid, email, snaps_dir)
+    if not st.session_state.get(f"t4_synced_{pid}"):
+        sync_snapshots_from_supabase(pid, email, snaps_dir)
+        st.session_state[f"t4_synced_{pid}"] = True
 
     # ── Pre-compute RFI state (needed by both columns) ────────────────────────
     rfi_labels = [
@@ -99,6 +96,19 @@ def render_tab_crop(email: str):
     idx         = min(st.session_state.get("crop_rfi_idx", 0), len(approved) - 1)
     issue       = approved[idx]
     rfi_num     = get_rfi_num(issue, idx + 1)
+
+    _sheet_map   = load_project_sheet_map(pid, email)
+    _inv_map     = {v: k for k, v in _sheet_map.items()}
+    _raw_sheet   = issue.get("sheets", "").strip()
+    _first_sheet = _raw_sheet.split(",")[0].strip() if _raw_sheet else ""
+    _target_page = _inv_map.get(_first_sheet)
+    if _target_page is None and _first_sheet:
+        _fl = _first_sheet.lower()
+        for _sn, _sp in _inv_map.items():
+            if _sn.lower() == _fl:
+                _target_page = _sp
+                break
+
     saved_snaps = _local_snaps(snaps_dir, rfi_num, max_snaps)
     snap_slot   = _local_next_snap(snaps_dir, rfi_num, max_snaps)
     snap_name   = f"RFI_{rfi_num:03d}_snap{snap_slot}.png" if snap_slot else None
@@ -119,6 +129,7 @@ def render_tab_crop(email: str):
                     str(pdf_path),
                     height=800,
                     key=f"pdf_viewer_t4_{rfi_num}",
+                    scroll_to_page=_target_page,
                 )
             else:
                 # Base64 iframe fallback — native PDF quality, no package needed
@@ -239,7 +250,7 @@ def render_tab_crop(email: str):
                     '<div class="sec-lbl" style="margin:0;">Preview</div>'
                     '</div>',
                     unsafe_allow_html=True)
-                st.image(shot_img, caption="Screenshot", use_container_width=True)
+                st.image(shot_img, caption="Screenshot", use_column_width=True)
 
                 st.markdown(
                     '<div style="display:flex;align-items:center;margin:12px 0 6px;">'
@@ -289,6 +300,8 @@ def render_tab_crop(email: str):
             st.success(f"✓ All {max_snaps} snapshots saved for RFI-{rfi_num:03d}.")
 
         # ── Saved snapshot gallery ────────────────────────────────────────────
+        if st.session_state.get("t4_delete_err"):
+            st.error(st.session_state.pop("t4_delete_err"))
         if saved_snaps:
             st.markdown(
                 f'<div style="display:flex;align-items:center;'
@@ -335,16 +348,21 @@ def render_tab_crop(email: str):
                             )
                             if st.button("✓ Yes Delete", key=f"del_yes_{si}_{pid}",
                                          type="primary", use_container_width=True):
-                                if snap_path.exists():
-                                    try:
-                                        snap_path.unlink()
-                                        _caps = load_project_captions(pid, email)
-                                        _caps.pop(snap_fn, None)
-                                        save_project_captions(pid, _caps, email)
-                                        if not delete_project_snapshot(email, pid, snap_fn):
-                                            st.warning("⚠ Cloud copy could not be deleted — snapshot removed locally.")
-                                    except Exception as _de:
-                                        st.error(f"Delete failed: {_de}")
+                                _del_ok = delete_project_snapshot(email, pid, snap_fn)
+                                if _del_ok:
+                                    _caps = load_project_captions(pid, email)
+                                    _caps.pop(snap_fn, None)
+                                    save_project_captions(pid, _caps, email)
+                                    if snap_path.exists():
+                                        try:
+                                            snap_path.unlink()
+                                        except Exception:
+                                            pass
+                                else:
+                                    st.session_state["t4_delete_err"] = (
+                                        "⚠ Could not delete snapshot from cloud — no changes made. "
+                                        "Check your connection and try again."
+                                    )
                                 st.session_state.pop("t4_confirm_delete", None)
                                 st.rerun()
                             if st.button("✕ Cancel", key=f"del_cancel_{si}_{pid}",
