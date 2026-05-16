@@ -247,7 +247,13 @@ def render_tab_analyse(email: str):
                 doc.close()
 
             if not pages_content:
-                st.warning("No text found in PDF — this may be a scanned drawing. Use Manual Entry.")
+                st.warning(
+                    "This PDF appears to contain scanned images rather than digital text. "
+                    "The AI cannot read image-based drawings directly.\n\n"
+                    "**What to do:** Switch to the **Add Your Own Issue** tab above and describe "
+                    "each issue you find manually. Your description will be formatted into a "
+                    "proper RFI using AI."
+                )
             else:
                 # ── Protection 2: large PDF gate ──────────────────────────────
                 _n_pages = len(pages_content)
@@ -406,6 +412,15 @@ def render_tab_analyse(email: str):
                             st.session_state.analysis_results, email)
                         st.rerun()
 
+            if n_app > 0:
+                st.markdown(
+                    '<div class="info-box success" style="margin:8px 0 4px;">'
+                    '✓ Issues marked as approved — click '
+                    '<strong>💾 Save Approved RFIs</strong> below to confirm and proceed to '
+                    'Crop &amp; Annotate.'
+                    '</div>',
+                    unsafe_allow_html=True)
+
             st.session_state.setdefault("t3_filter", "Pending")
             _filter = st.radio("Show:", ["All", "Approved", "Rejected", "Pending"],
                                horizontal=True, key="t3_filter",
@@ -426,7 +441,7 @@ def render_tab_analyse(email: str):
                 color  = {"approved": "#059669", "rejected": "#dc2626", "pending": "#d97706"}[status]
 
                 if status == "approved" and st.session_state.get("t3_edit_idx") == _orig_idx:
-                    with st.form(key=f"edit_form_{_orig_idx}"):
+                    with st.form(key=f"edit_form_{pid}_{_orig_idx}"):
                         st.markdown(
                             f'<div style="color:#111111;font-size:13px;font-weight:600;'
                             f'margin-bottom:8px;">Editing Issue {iss.get("issue_number", _orig_idx+1)}</div>',
@@ -434,29 +449,29 @@ def render_tab_analyse(email: str):
                         new_desc = st.text_area("Description",
                                                 value=iss.get("description", ""),
                                                 height=100,
-                                                key=f"edit_desc_{_orig_idx}")
+                                                key=f"edit_desc_{pid}_{_orig_idx}")
                         new_reason = st.text_area("Reason",
                                                   value=iss.get("reason", ""),
                                                   height=80,
-                                                  key=f"edit_reason_{_orig_idx}")
+                                                  key=f"edit_reason_{pid}_{_orig_idx}")
                         cur_cat = iss.get("category", _EDIT_CATS[0])
                         cat_idx = _EDIT_CATS.index(cur_cat) if cur_cat in _EDIT_CATS else 0
                         new_cat = st.selectbox("Category", _EDIT_CATS,
                                                index=cat_idx,
-                                               key=f"edit_cat_{_orig_idx}")
+                                               key=f"edit_cat_{pid}_{_orig_idx}")
                         new_sheets = st.text_input("Sheets",
                                                    value=iss.get("sheets", ""),
-                                                   key=f"edit_sheets_{_orig_idx}")
+                                                   key=f"edit_sheets_{pid}_{_orig_idx}")
                         cur_pri = iss.get("priority", _PRIORITY_OPTS[-1])
                         pri_idx = _PRIORITY_OPTS.index(cur_pri) if cur_pri in _PRIORITY_OPTS else 3
                         new_pri = st.selectbox("Priority", _PRIORITY_OPTS,
                                                index=pri_idx,
-                                               key=f"edit_pri_{_orig_idx}")
+                                               key=f"edit_pri_{pid}_{_orig_idx}")
                         _rbd_str = iss.get("response_required_by", "")
                         _rbd_val = datetime.date.fromisoformat(_rbd_str) if _rbd_str else datetime.date.today()
                         new_rbd  = st.date_input("Response Required By",
                                                  value=_rbd_val,
-                                                 key=f"edit_rbd_{_orig_idx}")
+                                                 key=f"edit_rbd_{pid}_{_orig_idx}")
                         fs1, fs2 = st.columns([1, 1])
                         with fs1:
                             save_clicked = st.form_submit_button("💾  Save Changes",
