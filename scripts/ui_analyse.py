@@ -557,12 +557,14 @@ def render_tab_analyse(email: str):
                         next_rfi      = _next_rfi_number(pid, email)
                         approved_list = [r["issue"] for r in results if r["status"] == "approved"]
                         for i, iss in enumerate(approved_list):
-                            iss["rfi_number"] = next_rfi + i
+                            if not iss.get("rfi_number"):
+                                iss["rfi_number"] = next_rfi + i
                         save_project_approved(pid, approved_list, email)
-                        last = next_rfi + len(approved_list) - 1
+                        save_project_scan_results(pid, st.session_state.analysis_results, email)
+                        _nums = [get_rfi_num(iss) for iss in approved_list]
                         st.session_state["_t3_saved_ok"] = (
                             f"✓ {len(approved_list)} RFI(s) saved — "
-                            f"RFI-{next_rfi:03d} through RFI-{last:03d}"
+                            f"RFI-{min(_nums):03d} through RFI-{max(_nums):03d}"
                         )
                         st.rerun()
         elif not run_ai:

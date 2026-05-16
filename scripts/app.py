@@ -943,6 +943,7 @@ def _reset_project_state():
         "analysis_results", "crop_rfi_idx", "show_manual_form", "generate_output",
         "t5_sel_client", "t5_sel_client_idx",
         "t2_client_form_mode", "t2_confirm_delete", "t2_confirm_del_client",
+        "t3_edit_idx", "t3_show_rescan_confirm",
     ]:
         st.session_state.pop(_k, None)
     for _rk in list(st.session_state.keys()):
@@ -1027,6 +1028,8 @@ with st.sidebar:
         "t2_confirm_delete",    # delete-project confirmation state
         "t2_confirm_del_client",  # delete-client confirmation state
         "t3_loaded_pid",
+        "t3_edit_idx",          # Tab 3 edit form index
+        "t3_show_rescan_confirm",  # Tab 3 rescan confirmation dialog
     ]
 
     _sb_all_pids = _list_project_ids(_email)
