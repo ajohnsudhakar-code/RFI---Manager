@@ -160,6 +160,8 @@ def render_tab_analyse(email: str):
                     st.session_state["t3_do_scan"] = True
 
         # ── Protection 1: rescan confirmation ─────────────────────────────────
+        if st.session_state.get("t3_rescan_limit_err"):
+            st.error(st.session_state.pop("t3_rescan_limit_err"))
         if st.session_state.get("t3_show_rescan_confirm"):
             _n = len(st.session_state.get("analysis_results", []))
             st.warning(
@@ -183,7 +185,7 @@ def render_tab_analyse(email: str):
                     _limit  = 20 if _usage.get("is_paid") else 3
                     if _count >= _limit:
                         _tier = "paid" if _usage.get("is_paid") else "free"
-                        st.error(
+                        st.session_state["t3_rescan_limit_err"] = (
                             f"Daily scan limit reached ({_count}/{_limit} scans used today "
                             f"on your {_tier} plan). Limit resets tomorrow."
                         )
@@ -312,7 +314,7 @@ def render_tab_analyse(email: str):
             with st.form("manual_form"):
                 desc      = st.text_area("RFI Description", height=120, label_visibility="collapsed",
                                          placeholder="e.g. Sheet S101 shows SE62 mesh but Sheet S105 detail shows SE72.")
-                manual_pri = st.selectbox("Priority", _PRIORITY_OPTS, index=3,
+                manual_pri = st.selectbox("Priority", _PRIORITY_OPTS, index=2,
                                           key="manual_pri")
                 manual_rbd = st.date_input("Response Required By", key="manual_rbd")
                 submitted = st.form_submit_button("Format with AI →", type="primary")
@@ -353,6 +355,8 @@ def render_tab_analyse(email: str):
         # ── REVIEW RESULTS ────────────────────────────────────────────────────
         results = st.session_state.get("analysis_results", [])
         if results:
+            if st.session_state.get("_t3_saved_ok"):
+                st.success(st.session_state.pop("_t3_saved_ok"))
             st.markdown("---")
             n_app = sum(1 for r in results if r["status"] == "approved")
             n_rej = sum(1 for r in results if r["status"] == "rejected")
@@ -538,28 +542,29 @@ def render_tab_analyse(email: str):
                                 st.session_state["t3_edit_idx"] = _orig_idx
                                 st.rerun()
 
-            st.markdown("---")
-            _sv1, _sv2 = st.columns([3, 1])
-            with _sv1:
-                st.markdown(
-                    f'<div style="font-size:13px;color:#374151;padding-top:8px;">'
-                    f'<strong style="color:#15803d;">{n_app} RFI(s) approved</strong>'
-                    f' — ready to proceed to Crop &amp; Annotate</div>',
-                    unsafe_allow_html=True)
-            with _sv2:
-                if st.button("💾 Save Approved RFIs", type="primary",
-                             use_container_width=True, key="t3_save_rfis"):
-                    next_rfi      = _next_rfi_number(pid, email)
-                    approved_list = [r["issue"] for r in results if r["status"] == "approved"]
-                    for i, iss in enumerate(approved_list):
-                        iss["rfi_number"] = next_rfi + i
-                    save_project_approved(pid, approved_list, email)
-                    last = next_rfi + len(approved_list) - 1
-                    st.success(
-                        f"✓ {len(approved_list)} RFI(s) saved — "
-                        f"RFI-{next_rfi:03d} through RFI-{last:03d}"
-                    )
-                    st.rerun()
+            if n_app > 0:
+                st.markdown("---")
+                _sv1, _sv2 = st.columns([3, 1])
+                with _sv1:
+                    st.markdown(
+                        f'<div style="font-size:13px;color:#374151;padding-top:8px;">'
+                        f'<strong style="color:#15803d;">{n_app} RFI(s) approved</strong>'
+                        f' — ready to proceed to Crop &amp; Annotate</div>',
+                        unsafe_allow_html=True)
+                with _sv2:
+                    if st.button("💾 Save Approved RFIs", type="primary",
+                                 use_container_width=True, key="t3_save_rfis"):
+                        next_rfi      = _next_rfi_number(pid, email)
+                        approved_list = [r["issue"] for r in results if r["status"] == "approved"]
+                        for i, iss in enumerate(approved_list):
+                            iss["rfi_number"] = next_rfi + i
+                        save_project_approved(pid, approved_list, email)
+                        last = next_rfi + len(approved_list) - 1
+                        st.session_state["_t3_saved_ok"] = (
+                            f"✓ {len(approved_list)} RFI(s) saved — "
+                            f"RFI-{next_rfi:03d} through RFI-{last:03d}"
+                        )
+                        st.rerun()
         elif not run_ai:
             st.markdown(
                 '<div class="info-box" style="margin-top:20px;">'
