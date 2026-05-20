@@ -105,9 +105,9 @@ All source files live in `scripts/`. Each file has ONE job — never put logic i
 | Tab 2 — Project Setup | ✅ Fully audited and complete |
 | Tab 3 — Analyse Drawings | ✅ Fully audited and complete |
 | Tab 4 — Crop and Annotate | ✅ Fully audited and complete |
-| Tab 5 — Generate RFI | ⚠️ Working — needs Word doc format update (real industry format) |
+| Tab 5 — Generate RFI | ⚠️ Working — two-panel layout complete, button flow being simplified |
 | Tab 6 — RFI Register | ⚠️ Working — not yet audited |
-| generate_rfi.py | ⚠️ Needs restructuring to match real industry RFI document format |
+| generate_rfi.py | ✅ Fully rebuilt — two-page professional layout with all sections |
 | Auth / login / signup / password reset | ✅ Complete and deployed |
 | Deployed to Streamlit Cloud | ✅ Live |
 
@@ -115,27 +115,28 @@ All source files live in `scripts/`. Each file has ONE job — never put logic i
 
 ## 8 — ACTIVE TASKS — PENDING
 
-**Priority 1: Update Word doc to match real industry RFI format**
-Reference sample: `138-108-RFI-005-PNGPCL Temp Office Accomodation.docx`
+**Priority 1: Tab 5 — Simplify Generate button flow**
+Remove the Save/Generate two-step. Replace with a single
+"▶ Generate Word Document" button that saves to Supabase AND
+generates the Word doc in one click. Download appears in the
+action bar immediately after generation — no scrolling required.
+Files: ui_generate.py
 
-Changes required in `generate_rfi.py` — add 5 new sections:
-- Rev 0R response section
-- Impact checkboxes: Cost Y/N, Schedule Y/N, Environmental/Regulatory Y/N, Public Affairs Y/N
-- Standard instructions block
-- Superintendent note
-- Formal approval signature block
+**Priority 2: Tab 6 Register — full audit**
+Same process used for Tabs 1–4.
 
-Changes required in `ui_generate.py`:
-- Add impact checkbox fields (time / cost / other) before the Generate button
-- These user inputs must be passed through to `generate_rfi_document()`
-
-After implementation: update this file with the new field spec.
-
-**Priority 2: Tab 6 Register — full audit** (same process used for Tabs 1–4)
+**Priority 3: usage_events RLS policy**
+The usage_events table is blocking inserts with error code 42501.
+Fix: Add RLS policy in Supabase SQL Editor:
+  CREATE POLICY "allow insert for authenticated users"
+  ON usage_events FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
 
 **Remaining pre-deployment:**
-- Add `http://localhost:8501` to Supabase Redirect URLs for local dev testing
-- Upgrade Supabase to Pro tier (free tier showing "EXCEEDING USAGE LIMITS")
+- Add http://localhost:8501 to Supabase Redirect URLs for local dev
+- Upgrade Supabase to Pro tier (free tier hitting usage limits)
+- Full end-to-end test with a real NZ engineer
 
 ---
 
@@ -146,6 +147,8 @@ After implementation: update this file with the new field spec.
 - No automated tests — all testing is manual end-to-end
 - Drawing revision (Rev B upload) wipes all prior AI scan work — no revision management yet
 - Free Supabase tier at usage limits — may cause intermittent failures under load
+- `usage_events` RLS policy blocking inserts (code 42501) — non-blocking for core app but analytics not recording
+- Tab 5 RFIs counter now counts .docx files in out_dir — accurately reflects generated documents only
 
 ---
 

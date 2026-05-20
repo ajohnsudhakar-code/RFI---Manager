@@ -171,9 +171,9 @@ trusted colleague who happens to know the codebase.
 | Tab 2 | Project Setup | Fully audited and fixed ✅ |
 | Tab 3 | Analyse Drawings | Fully audited and fixed ✅ |
 | Tab 4 | Crop and Annotate | Fully audited and fixed ✅ |
-| Tab 5 | Generate RFI | Needs update to match real industry RFI format |
+| Tab 5 | Generate RFI | ⚠️ Working — button flow simplification in progress |
 | Tab 6 | RFI Register | Not yet audited |
-| generate_rfi.py | Word doc builder | Needs restructuring to match real RFI document format |
+| generate_rfi.py | Word doc builder | ✅ Fully rebuilt — two-page professional layout |
 
 **Known pending work (pre-deployment):**
 - generate_rfi.py: add Rev 0R response section, impact checkboxes (Cost/Schedule/Environmental/Public Affairs), standard instructions block, superintendent note, formal approval signature block

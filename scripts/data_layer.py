@@ -405,6 +405,25 @@ def save_cfg(cfg: dict, email: str = None):
         _warn("Could not save data. Check error_log.txt for details.")
 
 
+def load_rfi_templates(email: str) -> dict:
+    _default = {"instructions": {}, "note": {}}
+    try:
+        cfg = load_cfg(email)
+        return cfg.get("rfi_templates", _default)
+    except Exception as e:
+        _log_error("load_rfi_templates", e)
+        return _default
+
+
+def save_rfi_templates(email: str, templates: dict):
+    try:
+        cfg = load_cfg(email)
+        cfg["rfi_templates"] = templates
+        save_cfg(cfg, email)
+    except Exception as e:
+        _log_error("save_rfi_templates", e)
+
+
 def load_company(email: str = None) -> dict:
     default = {"name": "", "address": "", "country": "", "postcode": "", "website": ""}
     return load_cfg(email).get("company", default)

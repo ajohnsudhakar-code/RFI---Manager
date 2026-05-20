@@ -1046,15 +1046,14 @@ with st.sidebar:
         st.markdown('<div class="sb-project-label">Project</div>', unsafe_allow_html=True)
 
         if not _sb_all_pids:
-            # No projects at all — guide user to create one
             if not st.session_state.get("_pid_is_new_unsaved"):
                 st.session_state.current_project_id = ""
+            _sb_sel_pid = st.session_state.get("current_project_id", "")
             st.markdown(
                 '<div class="info-box warn" style="font-size:12px;margin:4px 0 10px;">'
                 'No projects yet — click below to create your first project.'
                 '</div>',
                 unsafe_allow_html=True)
-            _sb_sel_pid = ""
         else:
             # Build display labels: project name with pid as fallback
             if st.session_state.get("_sb_label_pids") != _sb_all_pids:

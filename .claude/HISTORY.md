@@ -490,3 +490,76 @@ File: data_layer.py
 **DC-03 — if __name__ == "__main__": block removed** ✅ RESOLVED
 CLI block removed from generate_rfi.py.
 File: generate_rfi.py
+
+---
+
+## Tab 2 Fixes — Session 2 (May 2026)
+
+**Bug #32 — Sidebar rerun loop when creating first project** ✅ RESOLVED
+app.py: When no saved projects existed, the sidebar block set
+`_sb_sel_pid = ""` unconditionally — even when `_pid_is_new_unsaved`
+was True. This cleared the new project pid on every rerun, causing
+a redirect loop back to Tab 1 when typing in the project name field.
+Fix: Set `_sb_sel_pid = st.session_state.get("current_project_id", "")`
+instead of `""` when `_pid_is_new_unsaved` is True.
+File: app.py
+
+---
+
+## Tab 5 Fixes — Session 2 (May 2026)
+
+**Bug #33 — Template load StreamlitAPIException** ✅ RESOLVED
+ui_generate.py: The "←" load button for Instructions and Note
+templates wrote directly to the widget's own session state key
+after the widget was already instantiated, raising:
+StreamlitAPIException: cannot be modified after widget instantiated.
+Fix: Staging key pattern — write to `t5_new_instructions_stage_{pid}`
+on button click; before the text_area renders, promote staging key
+to widget key and delete staging key.
+File: ui_generate.py
+
+**Bug #34 — Word document layout** ✅ RESOLVED
+generate_rfi.py: Full professional two-page layout rebuilt.
+Page 1: Header (logo + company info + RFI title), Project info,
+Identification (subject full-width, meta, from/to, instructions,
+note each on own row), REV 0Q question, snapshots with captions.
+Page 2: Mini header, REV 0R response (blank for recipient),
+Impact checkboxes (Y/N), Employer's Instruction, Approval &
+signature (signature image embedded).
+All labels sentence case. Response due highlighted red in Table A
+only. Max 5 snapshots. Automatic page break between pages.
+File: generate_rfi.py
+
+**Bug #35 — Post-generation download not visible** ✅ RESOLVED
+ui_generate.py: After generating a document the download button
+was buried in the previously generated documents section.
+Fix 1: Added green download strip above the RFI list that shows
+immediately after generation with a direct download button.
+Fix 2: Download button added to the manual form button row —
+activates immediately after generation without scrolling.
+File: ui_generate.py
+
+**Bug #36 — RFIs counter counting saved drafts** ✅ RESOLVED
+ui_generate.py: The RFIs metric counted all rows in rfi_register
+including saved-but-not-generated drafts, causing inflated count.
+Fix: Count .docx files in out_dir — same source as Previously
+generated documents section. Counter now always matches.
+File: ui_generate.py
+
+**Bug #37 — Two-panel layout for Tab 5** ✅ RESOLVED
+ui_generate.py: Rebuilt Tab 5 with a left panel (RFI list) and
+right panel (unified form). Left panel shows only ungenerated
+AI RFIs. Once generated, RFI disappears from list. Manual RFIs
+never appear in the left panel. Right panel shows placeholder
+until user clicks Create RFI or New Manual RFI. Unified form
+handles both AI and manual RFIs with same fields.
+Session state key: t5_selected_rfi_{pid}
+File: ui_generate.py
+
+**Bug #38 — Save/View/Edit mode added to Tab 5** ✅ RESOLVED
+ui_generate.py: Added Save/View/Edit pattern matching Tab 1 and
+Tab 2. Edit mode shows full form with all fields. Save writes to
+rfi_register. View mode shows read-only summary with Generate
+and Edit buttons. Generate closes form and returns to placeholder.
+Session state key: t5_new_saved_{pid}
+File: ui_generate.py

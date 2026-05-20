@@ -116,9 +116,9 @@ def spacer(doc, pts=4):
     p.paragraph_format.line_spacing = Pt(pts)
 
 def _impact_cell(cell, label: str, value: str):
-    valid = {"Yes", "No", "TBD"}
+    valid = {"Yes", "No"}
     if value not in valid:
-        value = "TBD"
+        value = ""
     for _p in cell.paragraphs[1:]:
         _p._element.getparent().remove(_p._element)
     p0 = cell.paragraphs[0]
@@ -127,15 +127,12 @@ def _impact_cell(cell, label: str, value: str):
     r0 = p0.add_run(label)
     r0.bold = True
     r0.font.size = Pt(9)
-    for opt in ("Yes", "No", "TBD"):
+    for opt in ("Yes", "No"):
         tick = "☑" if opt == value else "☐"
-        text = f"{tick} {opt}"
-        if opt == "TBD":
-            text += "  _______________"
         p = cell.add_paragraph()
         p.paragraph_format.space_before = Pt(0)
         p.paragraph_format.space_after  = Pt(0)
-        r = p.add_run(text)
+        r = p.add_run(f"{tick} {opt}")
         r.font.size = Pt(9)
     cell.vertical_alignment = WD_ALIGN_VERTICAL.TOP
 
@@ -307,6 +304,9 @@ def generate_rfi_document(config: dict) -> dict:
         ORIGINATOR_EMAIL = _orig_cfg.get("email", _co.get("originator_email", ""))
         COMPANY_NAME     = _co.get("name", _co.get("company_name", _co.get("company", "")))
         COMPANY_WEB      = _co.get("website", _co.get("company_website", ""))
+        COMPANY_ADDRESS  = _co.get("address", "")
+        COMPANY_COUNTRY  = _co.get("country", "")
+        COMPANY_POSTCODE = _co.get("postcode", "")
 
         CLIENT_COMPANY = _client.get("company", "")
         CLIENT_ATTN    = _client.get("attn",    "")
@@ -423,338 +423,627 @@ def generate_rfi_document(config: dict) -> dict:
             s            = cw / CW
             snap_avail_w = round(cw - 0.4, 3)
 
-            # ── Section setup ─────────────────────────────────────────────
+            # ── Section setup — Page 1 ────────────────────────────────────
             if idx == 0:
-                section = doc.sections[0]
+                section_p1 = doc.sections[0]
             else:
-                section = doc.add_section()
+                section_p1 = doc.add_section()
+            section_p1.orientation   = orient
+            section_p1.page_width    = pg_w
+            section_p1.page_height   = pg_h
+            section_p1.left_margin   = MARGIN_L
+            section_p1.right_margin  = MARGIN_R
+            section_p1.top_margin    = MARGIN_T
+            section_p1.bottom_margin = MARGIN_B
 
-            section.orientation   = orient
-            section.page_width    = pg_w
-            section.page_height   = pg_h
-            section.left_margin   = MARGIN_L
-            section.right_margin  = MARGIN_R
-            section.top_margin    = MARGIN_T
-            section.bottom_margin = MARGIN_B
+            # ── PAGE 1: Header table ──────────────────────────────────────
+            cw_p1_lw = round(cw * 0.55, 3)
+            cw_p1_rw = round(cw - cw_p1_lw, 3)
+            t_hdr = _borderless_table(doc, 2, cw)
+            t_hdr_lc = t_hdr.cell(0, 0)
+            t_hdr_rc = t_hdr.cell(0, 1)
+            set_cell_width(t_hdr_lc, cw_p1_lw)
+            set_cell_width(t_hdr_rc, cw_p1_rw)
+            set_cell_margins(t_hdr_lc, 40, 40, 60, 60)
+            set_cell_margins(t_hdr_rc, 40, 40, 60, 60)
+            t_hdr_lc.vertical_alignment = WD_ALIGN_VERTICAL.TOP
+            t_hdr_rc.vertical_alignment = WD_ALIGN_VERTICAL.TOP
 
-            # ── Logo (standalone paragraphs) ──────────────────────────────
+            # Left cell: logo + company info
             if LOGO_IMG and os.path.exists(LOGO_IMG):
-                lp = doc.add_paragraph()
-                lp.paragraph_format.space_before = Pt(0)
-                lp.paragraph_format.space_after  = Pt(2)
-                lp.add_run().add_picture(LOGO_IMG, height=Inches(0.5))
-            cn_p = doc.add_paragraph()
-            cn_p.paragraph_format.space_before = Pt(0)
-            cn_p.paragraph_format.space_after  = Pt(4)
-            cn_r = cn_p.add_run(COMPANY_NAME)
-            cn_r.bold = True; cn_r.font.size = Pt(13)
+                _lp = t_hdr_lc.paragraphs[0]
+                _lp.paragraph_format.space_before = Pt(0)
+                _lp.paragraph_format.space_after  = Pt(2)
+                _lp.add_run().add_picture(LOGO_IMG, height=Inches(0.45))
+                _cn_p = t_hdr_lc.add_paragraph()
+            else:
+                _cn_p = t_hdr_lc.paragraphs[0]
+            _cn_p.paragraph_format.space_before = Pt(0)
+            _cn_p.paragraph_format.space_after  = Pt(0)
+            _cn_r = _cn_p.add_run(COMPANY_NAME)
+            _cn_r.bold = True; _cn_r.font.size = Pt(12); _cn_r.font.color.rgb = C_BLUE
 
-            # ── TABLE 1: Job Header ───────────────────────────────────────
-            t1 = doc.add_table(rows=1, cols=2)
-            t1.style = 'Table Grid'
-            set_table_width(t1, cw)
-            t1_lw = round(cw / 2, 3)
-            t1_rw = round(cw - t1_lw, 3)
-            t1_lc = t1.cell(0, 0); t1_rc = t1.cell(0, 1)
-            set_cell_width(t1_lc, t1_lw); set_cell_width(t1_rc, t1_rw)
-            set_cell_margins(t1_lc, 60, 60, 100, 100)
-            set_cell_margins(t1_rc, 60, 60, 100, 100)
-            set_cell_bg(t1_lc, C_INFOBG); set_cell_bg(t1_rc, C_INFOBG)
-            t1_lc.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-            t1_rc.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-            t1_lp = t1_lc.paragraphs[0]
-            t1_lp.paragraph_format.space_before = Pt(0)
-            t1_lp.paragraph_format.space_after  = Pt(0)
-            t1_rl = t1_lp.add_run("Job No:  "); t1_rl.bold = True; t1_rl.font.size = Pt(9)
-            t1_rv = t1_lp.add_run(CONTRACT_NO); t1_rv.font.size = Pt(9)
-            t1_rp = t1_rc.paragraphs[0]
-            t1_rp.paragraph_format.space_before = Pt(0)
-            t1_rp.paragraph_format.space_after  = Pt(0)
-            t1_rl2 = t1_rp.add_run("Contract Name:  "); t1_rl2.bold = True; t1_rl2.font.size = Pt(9)
-            t1_rv2 = t1_rp.add_run(PROJECT_NAME); t1_rv2.font.size = Pt(9)
+            _addr_parts = [p for p in [COMPANY_ADDRESS, COMPANY_COUNTRY, COMPANY_POSTCODE] if p]
+            if len(_addr_parts) >= 3:
+                _addr_str = f"{_addr_parts[0]}, {_addr_parts[1]} {_addr_parts[2]}"
+            elif len(_addr_parts) == 2:
+                _addr_str = f"{_addr_parts[0]}, {_addr_parts[1]}"
+            elif len(_addr_parts) == 1:
+                _addr_str = _addr_parts[0]
+            else:
+                _addr_str = ""
+            _addr_p = t_hdr_lc.add_paragraph()
+            _addr_p.paragraph_format.space_before = Pt(0)
+            _addr_p.paragraph_format.space_after  = Pt(0)
+            if _addr_str:
+                _addr_r = _addr_p.add_run(_addr_str)
+                _addr_r.font.size = Pt(8); _addr_r.font.color.rgb = C_GRAY
+            _web_p = t_hdr_lc.add_paragraph()
+            _web_p.paragraph_format.space_before = Pt(0)
+            _web_p.paragraph_format.space_after  = Pt(0)
+            if COMPANY_WEB:
+                _web_r = _web_p.add_run(COMPANY_WEB)
+                _web_r.font.size = Pt(8); _web_r.font.color.rgb = C_GRAY
+
+            # Right cell: RFI title + meta
+            _rfi_title_p = t_hdr_rc.paragraphs[0]
+            _rfi_title_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            _rfi_title_p.paragraph_format.space_before = Pt(0)
+            _rfi_title_p.paragraph_format.space_after  = Pt(2)
+            _rfi_title_r = _rfi_title_p.add_run("REQUEST FOR INFORMATION")
+            _rfi_title_r.bold = True; _rfi_title_r.font.size = Pt(14); _rfi_title_r.font.color.rgb = C_BLUE
+            _rfi_meta_p = t_hdr_rc.add_paragraph()
+            _rfi_meta_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            _rfi_meta_p.paragraph_format.space_before = Pt(0)
+            _rfi_meta_p.paragraph_format.space_after  = Pt(0)
+            _rfi_meta_r = _rfi_meta_p.add_run(f"Document No: {rfi_ref}  |  Revision: 0Q  |  Date: {today_str}")
+            _rfi_meta_r.font.size = Pt(9); _rfi_meta_r.font.color.rgb = C_GRAY
+
+            # Navy divider line
+            _div = doc.add_paragraph()
+            _div.paragraph_format.space_before = Pt(0)
+            _div.paragraph_format.space_after  = Pt(4)
+            _div_pPr = _div._p.get_or_add_pPr()
+            _div_pBdr = OxmlElement('w:pBdr')
+            _div_bot = OxmlElement('w:bottom')
+            _div_bot.set(qn('w:val'), 'single')
+            _div_bot.set(qn('w:sz'), '12')
+            _div_bot.set(qn('w:space'), '1')
+            _div_bot.set(qn('w:color'), '1A3A6B')
+            _div_pBdr.append(_div_bot)
+            _div_pPr.append(_div_pBdr)
 
             spacer(doc, 4)
 
-            # ── TABLE 2: Document Header ──────────────────────────────────
-            t2 = doc.add_table(rows=6, cols=4)
-            t2.style = 'Table Grid'
-            set_table_width(t2, cw)
-            t2_cw = [
-                round(1.5 * s, 3),
-                round(4.0 * s, 3),
-                round(1.5 * s, 3),
-                round(cw - (1.5 + 4.0 + 1.5) * s, 3),
+            # ── TABLE A: Project Info (1 row, 4 cols) ─────────────────────
+            _ta_cw = [round(cw*0.20,3), round(cw*0.45,3), round(cw*0.18,3),
+                      round(cw - cw*0.20 - cw*0.45 - cw*0.18, 3)]
+            t_a = doc.add_table(rows=1, cols=4)
+            t_a.style = 'Table Grid'
+            set_table_width(t_a, cw)
+            _ta_data = [
+                ("Job no.",      CONTRACT_NO,  False),
+                ("Project name", PROJECT_NAME, False),
+                ("Date raised",  today_str,    False),
+                ("Response due", response_by,  True),
             ]
-
-            # Row 0: Subject Description | value | Document No | rfi_ref
-            for ci, (content, is_lbl) in enumerate([
-                ("Subject Description:", True),
-                (issue['description'],   False),
-                ("Document No:",         True),
-                (rfi_ref,                False),
-            ]):
-                cell = t2.cell(0, ci)
-                set_cell_width(cell, t2_cw[ci])
-                set_cell_margins(cell, 60, 60, 100, 100)
-                cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-                if is_lbl:
-                    set_cell_bg(cell, C_INFOBG)
-                    para(cell, content, bold=True, size=9)
-                else:
-                    para(cell, content, size=9)
-
-            # Row 1: Revision | 0Q | Date | today_str
-            for ci, (lbl, val, is_lbl) in enumerate([
-                ("Revision:", "0Q", True),
-                (None, "0Q", False),
-                ("Date:", today_str, True),
-                (None, today_str, False),
-            ]):
-                cell = t2.cell(1, ci)
-                set_cell_width(cell, t2_cw[ci])
-                set_cell_margins(cell, 60, 60, 100, 100)
-                cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-                if is_lbl:
-                    set_cell_bg(cell, C_INFOBG)
-                    para(cell, lbl, bold=True, size=9)
-                else:
-                    para(cell, val, size=9)
-
-            # Row 2: From (Originator) | merged value
-            t2_r2_lc = t2.cell(2, 0)
-            t2_r2_vc = t2.cell(2, 1).merge(t2.cell(2, 3))
-            for _p in t2_r2_vc.paragraphs[1:]:
-                _p._element.getparent().remove(_p._element)
-            set_cell_width(t2_r2_lc, t2_cw[0])
-            set_cell_margins(t2_r2_lc, 60, 60, 100, 100)
-            set_cell_margins(t2_r2_vc, 60, 60, 100, 100)
-            set_cell_bg(t2_r2_lc, C_INFOBG)
-            t2_r2_lc.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-            t2_r2_vc.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-            para(t2_r2_lc, "From (Originator):", bold=True, size=9)
-            para(t2_r2_vc, f"{ORIGINATOR_NAME} — {COMPANY_NAME}", size=9)
-
-            # Row 3: To (Recipient) | merged value
-            t2_r3_lc = t2.cell(3, 0)
-            t2_r3_vc = t2.cell(3, 1).merge(t2.cell(3, 3))
-            for _p in t2_r3_vc.paragraphs[1:]:
-                _p._element.getparent().remove(_p._element)
-            set_cell_width(t2_r3_lc, t2_cw[0])
-            set_cell_margins(t2_r3_lc, 60, 60, 100, 100)
-            set_cell_margins(t2_r3_vc, 60, 60, 100, 100)
-            set_cell_bg(t2_r3_lc, C_INFOBG)
-            t2_r3_lc.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-            t2_r3_vc.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-            para(t2_r3_lc, "To (Recipient):", bold=True, size=9)
-            para(t2_r3_vc, f"{CLIENT_ATTN} — {CLIENT_COMPANY}", size=9)
-
-            # Row 4: Instructions (merged full width)
-            t2_r4 = t2.cell(4, 0).merge(t2.cell(4, 3))
-            for _p in t2_r4.paragraphs[1:]:
-                _p._element.getparent().remove(_p._element)
-            set_cell_margins(t2_r4, 60, 60, 100, 100)
-            set_cell_bg(t2_r4, "F2F2F2")
-            t2_r4_p = t2_r4.paragraphs[0]
-            t2_r4_p.paragraph_format.space_before = Pt(0)
-            t2_r4_p.paragraph_format.space_after  = Pt(0)
-            t2_r4_lbl = t2_r4_p.add_run("Instructions:"); t2_r4_lbl.bold = True; t2_r4_lbl.font.size = Pt(8)
-            instructions_text = config.get("instructions_text", "")
-            if instructions_text:
-                t2_r4_vp = t2_r4.add_paragraph()
-                t2_r4_vp.paragraph_format.space_before = Pt(2)
-                t2_r4_vp.paragraph_format.space_after  = Pt(0)
-                t2_r4_vp.add_run(instructions_text).font.size = Pt(8)
-
-            # Row 5: Superintendent Note (merged full width)
-            t2_r5 = t2.cell(5, 0).merge(t2.cell(5, 3))
-            for _p in t2_r5.paragraphs[1:]:
-                _p._element.getparent().remove(_p._element)
-            set_cell_margins(t2_r5, 60, 60, 100, 100)
-            set_cell_bg(t2_r5, "F2F2F2")
-            t2_r5_p = t2_r5.paragraphs[0]
-            t2_r5_p.paragraph_format.space_before = Pt(0)
-            t2_r5_p.paragraph_format.space_after  = Pt(0)
-            t2_r5_lbl = t2_r5_p.add_run("Superintendent Note:"); t2_r5_lbl.bold = True; t2_r5_lbl.font.size = Pt(8)
-            superintendent_text = config.get("superintendent_text", "")
-            if superintendent_text:
-                t2_r5_vp = t2_r5.add_paragraph()
-                t2_r5_vp.paragraph_format.space_before = Pt(2)
-                t2_r5_vp.paragraph_format.space_after  = Pt(0)
-                t2_r5_vp.add_run(superintendent_text).font.size = Pt(8)
+            for ci, (lbl, val, is_red) in enumerate(_ta_data):
+                _c = t_a.cell(0, ci)
+                set_cell_width(_c, _ta_cw[ci])
+                set_cell_margins(_c, 60, 60, 100, 100)
+                set_cell_bg(_c, C_INFOBG)
+                _c.vertical_alignment = WD_ALIGN_VERTICAL.TOP
+                _lp = _c.paragraphs[0]
+                _lp.paragraph_format.space_before = Pt(0)
+                _lp.paragraph_format.space_after  = Pt(0)
+                _lr = _lp.add_run(lbl)
+                _lr.bold = True; _lr.font.size = Pt(8); _lr.font.color.rgb = C_BLUE
+                _vp = _c.add_paragraph()
+                _vp.paragraph_format.space_before = Pt(0)
+                _vp.paragraph_format.space_after  = Pt(0)
+                _vr = _vp.add_run(val)
+                _vr.font.size = Pt(9)
+                if is_red:
+                    _vr.bold = True; _vr.font.color.rgb = C_RED
 
             spacer(doc, 4)
 
-            # ── TABLE 3: REV 0Q (Question) ────────────────────────────────
-            t3_col_w = [round(cw * 0.40, 3), round(cw * 0.30, 3), round(cw - cw * 0.40 - cw * 0.30, 3)]
-            t3 = doc.add_table(rows=3, cols=3)
-            t3.style = 'Table Grid'
-            set_table_width(t3, cw)
+            # ── TABLE B: Identification (6 rows, 4 equal cols) ────────────
+            _tb_cw = round(cw / 4, 3)
+            t_b = doc.add_table(rows=6, cols=4)
+            t_b.style = 'Table Grid'
+            set_table_width(t_b, cw)
+
+            # Row 0: "IDENTIFICATION" header (merged, navy)
+            _tb_r0 = t_b.cell(0, 0).merge(t_b.cell(0, 3))
+            for _p in _tb_r0.paragraphs[1:]: _p._element.getparent().remove(_p._element)
+            set_cell_bg(_tb_r0, C_ACCENT)
+            set_cell_margins(_tb_r0, 60, 60, 100, 100)
+            _tb_r0.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+            _tb_r0_p = _tb_r0.paragraphs[0]
+            _tb_r0_p.paragraph_format.space_before = Pt(0)
+            _tb_r0_p.paragraph_format.space_after  = Pt(0)
+            _tb_r0_r = _tb_r0_p.add_run("Identification")
+            _tb_r0_r.bold = True; _tb_r0_r.font.size = Pt(10)
+            _tb_r0_r.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+
+            # Row 1: Subject (merged full width)
+            _tb_r1 = t_b.cell(1, 0).merge(t_b.cell(1, 3))
+            for _p in _tb_r1.paragraphs[1:]: _p._element.getparent().remove(_p._element)
+            set_cell_margins(_tb_r1, 80, 80, 100, 100)
+            _tb_r1_p1 = _tb_r1.paragraphs[0]
+            _tb_r1_p1.paragraph_format.space_before = Pt(0)
+            _tb_r1_p1.paragraph_format.space_after  = Pt(2)
+            _tb_r1_lbl = _tb_r1_p1.add_run("Subject")
+            _tb_r1_lbl.bold = True; _tb_r1_lbl.font.size = Pt(8); _tb_r1_lbl.font.color.rgb = C_BLUE
+            _tb_r1_p2 = _tb_r1.add_paragraph()
+            _tb_r1_p2.paragraph_format.space_before = Pt(0)
+            _tb_r1_p2.paragraph_format.space_after  = Pt(0)
+            _tb_r1_p2.add_run(issue.get('description', '')).font.size = Pt(10)
+
+            # Row 2: Meta (4 separate cols)
+            _tb_r2_data = [
+                ("Document no.",       rfi_ref,                   False),
+                ("Drawing ref.",       sheets_str,                False),
+                ("Priority",           priority,                  True),
+                ("Category",           issue.get('category', ''), False),
+            ]
+            for ci, (lbl, val, is_red) in enumerate(_tb_r2_data):
+                _c = t_b.cell(2, ci)
+                set_cell_width(_c, _tb_cw)
+                set_cell_margins(_c, 60, 60, 100, 100)
+                set_cell_bg(_c, C_INFOBG)
+                _c.vertical_alignment = WD_ALIGN_VERTICAL.TOP
+                _lp = _c.paragraphs[0]
+                _lp.paragraph_format.space_before = Pt(0)
+                _lp.paragraph_format.space_after  = Pt(0)
+                _lr = _lp.add_run(lbl)
+                _lr.bold = True; _lr.font.size = Pt(8); _lr.font.color.rgb = C_BLUE
+                _vp = _c.add_paragraph()
+                _vp.paragraph_format.space_before = Pt(0)
+                _vp.paragraph_format.space_after  = Pt(0)
+                _vr = _vp.add_run(val); _vr.font.size = Pt(9)
+                if is_red:
+                    _vr.bold = True; _vr.font.color.rgb = C_RED
+
+            # Row 3: From/To (col 0+1 merged | col 2+3 merged)
+            _tb_r3_left  = t_b.cell(3, 0).merge(t_b.cell(3, 1))
+            _tb_r3_right = t_b.cell(3, 2).merge(t_b.cell(3, 3))
+            for _merged in [_tb_r3_left, _tb_r3_right]:
+                for _p in _merged.paragraphs[1:]: _p._element.getparent().remove(_p._element)
+                set_cell_margins(_merged, 80, 80, 100, 100)
+                _merged.vertical_alignment = WD_ALIGN_VERTICAL.TOP
+            _tb_r3l_p = _tb_r3_left.paragraphs[0]
+            _tb_r3l_p.paragraph_format.space_before = Pt(0)
+            _tb_r3l_p.paragraph_format.space_after  = Pt(2)
+            _tb_r3l_lbl = _tb_r3l_p.add_run("From")
+            _tb_r3l_lbl.bold = True; _tb_r3l_lbl.font.size = Pt(8); _tb_r3l_lbl.font.color.rgb = C_BLUE
+            _tb_r3l_vp = _tb_r3_left.add_paragraph()
+            _tb_r3l_vp.paragraph_format.space_before = Pt(0)
+            _tb_r3l_vp.paragraph_format.space_after  = Pt(0)
+            _tb_r3l_vr = _tb_r3l_vp.add_run(ORIGINATOR_NAME)
+            _tb_r3l_vr.bold = True; _tb_r3l_vr.font.size = Pt(10)
+            _tb_r3l_cp = _tb_r3_left.add_paragraph()
+            _tb_r3l_cp.paragraph_format.space_before = Pt(0)
+            _tb_r3l_cp.paragraph_format.space_after  = Pt(0)
+            _tb_r3l_cr = _tb_r3l_cp.add_run(COMPANY_NAME)
+            _tb_r3l_cr.font.size = Pt(8); _tb_r3l_cr.font.color.rgb = C_GRAY
+            _tb_r3r_p = _tb_r3_right.paragraphs[0]
+            _tb_r3r_p.paragraph_format.space_before = Pt(0)
+            _tb_r3r_p.paragraph_format.space_after  = Pt(2)
+            _tb_r3r_lbl = _tb_r3r_p.add_run("To")
+            _tb_r3r_lbl.bold = True; _tb_r3r_lbl.font.size = Pt(8); _tb_r3r_lbl.font.color.rgb = C_BLUE
+            _tb_r3r_vp = _tb_r3_right.add_paragraph()
+            _tb_r3r_vp.paragraph_format.space_before = Pt(0)
+            _tb_r3r_vp.paragraph_format.space_after  = Pt(0)
+            _tb_r3r_vr = _tb_r3r_vp.add_run(CLIENT_ATTN)
+            _tb_r3r_vr.bold = True; _tb_r3r_vr.font.size = Pt(10)
+            _tb_r3r_cp = _tb_r3_right.add_paragraph()
+            _tb_r3r_cp.paragraph_format.space_before = Pt(0)
+            _tb_r3r_cp.paragraph_format.space_after  = Pt(0)
+            _tb_r3r_cr = _tb_r3r_cp.add_run(CLIENT_COMPANY)
+            _tb_r3r_cr.font.size = Pt(8); _tb_r3r_cr.font.color.rgb = C_GRAY
+
+            # Row 4: Instructions (merged, F2F2F2)
+            instructions_text = config.get("instructions_text", "")
+            _DEFAULT_INS = ("Originator shall complete Revision 0Q of this form and send to "
+                            "the recipient for response within the specified period.")
+            _tb_r4 = t_b.cell(4, 0).merge(t_b.cell(4, 3))
+            for _p in _tb_r4.paragraphs[1:]: _p._element.getparent().remove(_p._element)
+            set_cell_margins(_tb_r4, 80, 80, 100, 100)
+            set_cell_bg(_tb_r4, "F2F2F2")
+            _tb_r4_p1 = _tb_r4.paragraphs[0]
+            _tb_r4_p1.paragraph_format.space_before = Pt(0)
+            _tb_r4_p1.paragraph_format.space_after  = Pt(2)
+            _tb_r4_lbl = _tb_r4_p1.add_run("Instructions")
+            _tb_r4_lbl.bold = True; _tb_r4_lbl.font.size = Pt(8); _tb_r4_lbl.font.color.rgb = C_BLUE
+            _tb_r4_p2 = _tb_r4.add_paragraph()
+            _tb_r4_p2.paragraph_format.space_before = Pt(0)
+            _tb_r4_p2.paragraph_format.space_after  = Pt(0)
+            _tb_r4_p2.add_run(instructions_text if instructions_text else _DEFAULT_INS).font.size = Pt(8)
+
+            # Row 5: Note (merged, F2F2F2)
+            superintendent_text = config.get("superintendent_text", "")
+            _DEFAULT_NOTE = ("Should the Superintendent consider this RFI to be a Change, the "
+                             "Superintendent shall issue an Employer's Instruction.")
+            _tb_r5 = t_b.cell(5, 0).merge(t_b.cell(5, 3))
+            for _p in _tb_r5.paragraphs[1:]: _p._element.getparent().remove(_p._element)
+            set_cell_margins(_tb_r5, 80, 80, 100, 100)
+            set_cell_bg(_tb_r5, "F2F2F2")
+            _tb_r5_p1 = _tb_r5.paragraphs[0]
+            _tb_r5_p1.paragraph_format.space_before = Pt(0)
+            _tb_r5_p1.paragraph_format.space_after  = Pt(2)
+            _tb_r5_lbl = _tb_r5_p1.add_run("Note")
+            _tb_r5_lbl.bold = True; _tb_r5_lbl.font.size = Pt(8); _tb_r5_lbl.font.color.rgb = C_BLUE
+            _tb_r5_p2 = _tb_r5.add_paragraph()
+            _tb_r5_p2.paragraph_format.space_before = Pt(0)
+            _tb_r5_p2.paragraph_format.space_after  = Pt(0)
+            _tb_r5_p2.add_run(superintendent_text if superintendent_text else _DEFAULT_NOTE).font.size = Pt(8)
+
+            spacer(doc, 4)
+
+            # ── TABLE C: REV 0Q Question (4 rows, 3 cols) ────────────────
+            _tc_cw = [round(cw*0.38, 3), round(cw*0.31, 3),
+                      round(cw - cw*0.38 - cw*0.31, 3)]
+            t_c = doc.add_table(rows=4, cols=3)
+            t_c.style = 'Table Grid'
+            set_table_width(t_c, cw)
 
             # Row 0: header
-            t3_h0 = t3.cell(0, 0); t3_h1 = t3.cell(0, 1); t3_h2 = t3.cell(0, 2)
-            set_cell_width(t3_h0, t3_col_w[0])
-            set_cell_width(t3_h1, t3_col_w[1])
-            set_cell_width(t3_h2, t3_col_w[2])
-            set_cell_margins(t3_h0, 60, 60, 100, 100)
-            set_cell_margins(t3_h1, 60, 60, 100, 100)
-            set_cell_margins(t3_h2, 60, 60, 100, 100)
-            set_cell_bg(t3_h0, C_ACCENT)
-            t3_h0.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-            t3_h1.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-            t3_h2.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-            t3_hp = para(t3_h0, "RFI REV 0Q", bold=True, size=10)
-            t3_hp.runs[0].font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-            para(t3_h1, f"Date Sent:  {today_str}", size=9)
-            para(t3_h2, f"Response Due Date:  {response_by}", size=9)
+            for ci, _tc_hc in enumerate([t_c.cell(0, ci) for ci in range(3)]):
+                set_cell_width(_tc_hc, _tc_cw[ci])
+                set_cell_margins(_tc_hc, 60, 60, 100, 100)
+                _tc_hc.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+            set_cell_bg(t_c.cell(0, 0), C_ACCENT)
+            _tc_h0_p = t_c.cell(0, 0).paragraphs[0]
+            _tc_h0_p.paragraph_format.space_before = Pt(0)
+            _tc_h0_p.paragraph_format.space_after  = Pt(0)
+            _tc_h0_r = _tc_h0_p.add_run("RFI Rev 0Q")
+            _tc_h0_r.bold = True; _tc_h0_r.font.size = Pt(10)
+            _tc_h0_r.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+            para(t_c.cell(0, 1), f"Date Sent:  {today_str}", size=9)
+            _tc_h2_p = t_c.cell(0, 2).paragraphs[0]
+            _tc_h2_p.paragraph_format.space_before = Pt(0)
+            _tc_h2_p.paragraph_format.space_after  = Pt(0)
+            _tc_h2_r = _tc_h2_p.add_run(f"Response Due Date:  {response_by}")
+            _tc_h2_r.font.size = Pt(9)
 
             # Row 1: Question (merged full width)
-            t3_q = t3.cell(1, 0).merge(t3.cell(1, 2))
-            for _p in t3_q.paragraphs[1:]:
-                _p._element.getparent().remove(_p._element)
-            set_cell_margins(t3_q, 80, 80, 100, 100)
-            t3_q.vertical_alignment = WD_ALIGN_VERTICAL.TOP
-            t3_qp1 = t3_q.paragraphs[0]
-            t3_qp1.paragraph_format.space_before = Pt(0)
-            t3_qp1.paragraph_format.space_after  = Pt(4)
-            t3_ql = t3_qp1.add_run("Question:"); t3_ql.bold = True; t3_ql.font.size = Pt(10)
-            t3_qp2 = t3_q.add_paragraph()
-            t3_qp2.paragraph_format.space_before = Pt(0)
-            t3_qp2.paragraph_format.space_after  = Pt(0)
-            t3_qp2.add_run(issue.get("question", issue.get("description", ""))).font.size = Pt(10)
-            _set_row_min_height(t3.rows[1], 1.0)
+            _tc_q = t_c.cell(1, 0).merge(t_c.cell(1, 2))
+            for _p in _tc_q.paragraphs[1:]: _p._element.getparent().remove(_p._element)
+            set_cell_margins(_tc_q, 80, 80, 100, 100)
+            _tc_q.vertical_alignment = WD_ALIGN_VERTICAL.TOP
+            _tc_qp1 = _tc_q.paragraphs[0]
+            _tc_qp1.paragraph_format.space_before = Pt(0)
+            _tc_qp1.paragraph_format.space_after  = Pt(4)
+            _tc_ql = _tc_qp1.add_run("Question")
+            _tc_ql.bold = True; _tc_ql.font.size = Pt(10); _tc_ql.font.color.rgb = C_BLUE
+            _tc_qp2 = _tc_q.add_paragraph()
+            _tc_qp2.paragraph_format.space_before = Pt(0)
+            _tc_qp2.paragraph_format.space_after  = Pt(0)
+            _tc_qp2.add_run(issue.get("question", issue.get("description", ""))).font.size = Pt(10)
+            _set_row_min_height(t_c.rows[1], 1.2)
 
-            # Row 2: Reference Document No
-            t3_r2_lc = t3.cell(2, 0)
-            t3_r2_vc = t3.cell(2, 1).merge(t3.cell(2, 2))
-            for _p in t3_r2_vc.paragraphs[1:]:
-                _p._element.getparent().remove(_p._element)
-            set_cell_width(t3_r2_lc, t3_col_w[0])
-            set_cell_margins(t3_r2_lc, 60, 60, 100, 100)
-            set_cell_margins(t3_r2_vc, 60, 60, 100, 100)
-            set_cell_bg(t3_r2_lc, C_INFOBG)
-            t3_r2_lc.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-            t3_r2_vc.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-            para(t3_r2_lc, "Reference Document No:", bold=True, size=9)
-            para(t3_r2_vc, issue.get("reference_doc", ""), size=9)
+            # Row 2: Snapshots placeholder (zero-height if snaps exist, else "no snaps" message)
+            _tc_s = t_c.cell(2, 0).merge(t_c.cell(2, 2))
+            for _p in _tc_s.paragraphs[1:]: _p._element.getparent().remove(_p._element)
+            set_cell_margins(_tc_s, 60, 60, 100, 100)
+            if not snap_info:
+                set_cell_bg(_tc_s, "F5F5F5")
+                _tc_sp = _tc_s.paragraphs[0]
+                _tc_sp.paragraph_format.space_before = Pt(0)
+                _tc_sp.paragraph_format.space_after  = Pt(0)
+                _tc_sp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                _tc_sr = _tc_sp.add_run("[ No drawing snapshots attached ]")
+                _tc_sr.italic = True; _tc_sr.font.size = Pt(9); _tc_sr.font.color.rgb = C_GRAY
+            else:
+                _tc_s.paragraphs[0].paragraph_format.space_before = Pt(0)
+                _tc_s.paragraphs[0].paragraph_format.space_after  = Pt(0)
 
-            # ── Snapshots ─────────────────────────────────────────────────
-            if snap_info:
-                _embed_snapshots(doc, snap_info, snap_avail_w)
-                for i, (path, iw, ih) in enumerate(snap_info, 1):
-                    logs.append(f"    Snap {i}: {os.path.basename(path)}  ({iw}x{ih}px)")
+            # Row 3: Reference footer
+            _tc_ref_left  = t_c.cell(3, 0).merge(t_c.cell(3, 1))
+            _tc_ref_right = t_c.cell(3, 2)
+            for _p in _tc_ref_left.paragraphs[1:]: _p._element.getparent().remove(_p._element)
+            set_cell_bg(_tc_ref_left, C_INFOBG); set_cell_bg(_tc_ref_right, C_INFOBG)
+            set_cell_margins(_tc_ref_left, 60, 60, 100, 100)
+            set_cell_margins(_tc_ref_right, 60, 60, 100, 100)
+            _tc_ref_left.vertical_alignment  = WD_ALIGN_VERTICAL.CENTER
+            _tc_ref_right.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+            _tc_rl_p = _tc_ref_left.paragraphs[0]
+            _tc_rl_p.paragraph_format.space_before = Pt(0)
+            _tc_rl_p.paragraph_format.space_after  = Pt(0)
+            _tc_rl_lbl = _tc_rl_p.add_run("Reference document")
+            _tc_rl_lbl.bold = True; _tc_rl_lbl.font.size = Pt(8); _tc_rl_lbl.font.color.rgb = C_BLUE
+            _tc_rl_vp = _tc_ref_left.add_paragraph()
+            _tc_rl_vp.paragraph_format.space_before = Pt(0)
+            _tc_rl_vp.paragraph_format.space_after  = Pt(0)
+            _tc_rl_vp.add_run(issue.get('reference_doc', '')).font.size = Pt(9)
+            _tc_rr_p = _tc_ref_right.paragraphs[0]
+            _tc_rr_p.paragraph_format.space_before = Pt(0)
+            _tc_rr_p.paragraph_format.space_after  = Pt(0)
+            _tc_rr_lbl = _tc_rr_p.add_run("Sheet ref.")
+            _tc_rr_lbl.bold = True; _tc_rr_lbl.font.size = Pt(8); _tc_rr_lbl.font.color.rgb = C_BLUE
+            _tc_rr_vp = _tc_ref_right.add_paragraph()
+            _tc_rr_vp.paragraph_format.space_before = Pt(0)
+            _tc_rr_vp.paragraph_format.space_after  = Pt(0)
+            _tc_rr_vp.add_run(sheets_str).font.size = Pt(9)
+
+            # Snapshots outside table (after Table C)
+            _snaps_to_embed = snap_info[:5]
+            if _snaps_to_embed:
+                spacer(doc, 4)
+                _total_snaps = len(_snaps_to_embed)
+                for _si, (_spath, _siw, _sih) in enumerate(_snaps_to_embed, 1):
+                    _sdw, _ = _fit_image(_siw, _sih, snap_avail_w, 3.5)
+                    _sp = doc.add_paragraph()
+                    _sp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    _sp.paragraph_format.space_before = Pt(4)
+                    _sp.paragraph_format.space_after  = Pt(0)
+                    _sp.add_run().add_picture(_spath, width=Inches(_sdw))
+                    _cap = doc.add_paragraph()
+                    _cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    _cap.paragraph_format.space_before = Pt(0)
+                    _cap.paragraph_format.space_after  = Pt(4)
+                    _cap_r = _cap.add_run(
+                        f"Attachment {_si} of {_total_snaps} — Sheet ref. {sheets_str}")
+                    _cap_r.font.size = Pt(8); _cap_r.font.color.rgb = C_GRAY
+                    logs.append(
+                        f"    Snap {_si}: {os.path.basename(_spath)}  ({_siw}x{_sih}px)")
                 spacer(doc, 4)
             else:
+                _no_snap_p = doc.add_paragraph()
+                _no_snap_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                _no_snap_p.paragraph_format.space_before = Pt(4)
+                _no_snap_p.paragraph_format.space_after  = Pt(4)
+                _no_snap_r = _no_snap_p.add_run("[ No drawing snapshots attached ]")
+                _no_snap_r.italic = True
+                _no_snap_r.font.size = Pt(9)
+                _no_snap_r.font.color.rgb = C_GRAY
                 logs.append(f"    WARNING: No snapshots found for {rfi_ref}")
 
+            # ── PAGE BREAK ────────────────────────────────────────────────
+            _pb = doc.add_paragraph()
+            _pb.paragraph_format.space_before = Pt(0)
+            _pb.paragraph_format.space_after  = Pt(0)
+            _pbr = OxmlElement('w:br')
+            _pbr.set(qn('w:type'), 'page')
+            _pb.runs[0]._r.append(_pbr) if _pb.runs else _pb.add_run()._r.append(_pbr)
+
+            # ── Section setup — Page 2 (always portrait) ──────────────────
+            cw_p2 = 7.07
+            section_p2 = doc.add_section()
+            section_p2.orientation   = WD_ORIENT.PORTRAIT
+            section_p2.page_width    = Inches(8.27)
+            section_p2.page_height   = Inches(11.69)
+            section_p2.left_margin   = MARGIN_L
+            section_p2.right_margin  = MARGIN_R
+            section_p2.top_margin    = MARGIN_T
+            section_p2.bottom_margin = MARGIN_B
+
+            # ── PAGE 2: Mini header table ─────────────────────────────────
+            _mh_lw = round(cw_p2 * 0.55, 3)
+            _mh_rw = round(cw_p2 - _mh_lw, 3)
+            t_mh = _borderless_table(doc, 2, cw_p2)
+            _mh_lc = t_mh.cell(0, 0); _mh_rc = t_mh.cell(0, 1)
+            set_cell_width(_mh_lc, _mh_lw); set_cell_width(_mh_rc, _mh_rw)
+            set_cell_margins(_mh_lc, 40, 40, 60, 60)
+            set_cell_margins(_mh_rc, 40, 40, 60, 60)
+            _mh_lp = _mh_lc.paragraphs[0]
+            _mh_lp.paragraph_format.space_before = Pt(0)
+            _mh_lp.paragraph_format.space_after  = Pt(0)
+            _mh_lr = _mh_lp.add_run(COMPANY_NAME)
+            _mh_lr.bold = True; _mh_lr.font.size = Pt(10); _mh_lr.font.color.rgb = C_BLUE
+            _mh_rp = _mh_rc.paragraphs[0]
+            _mh_rp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            _mh_rp.paragraph_format.space_before = Pt(0)
+            _mh_rp.paragraph_format.space_after  = Pt(0)
+            _mh_rr = _mh_rp.add_run(f"{rfi_ref}  ·  {PROJECT_NAME}  ·  Response Page")
+            _mh_rr.font.size = Pt(9); _mh_rr.font.color.rgb = C_GRAY
+
+            # Navy divider line (Page 2)
+            _div2 = doc.add_paragraph()
+            _div2.paragraph_format.space_before = Pt(0)
+            _div2.paragraph_format.space_after  = Pt(4)
+            _div2_pPr = _div2._p.get_or_add_pPr()
+            _div2_pBdr = OxmlElement('w:pBdr')
+            _div2_bot = OxmlElement('w:bottom')
+            _div2_bot.set(qn('w:val'), 'single')
+            _div2_bot.set(qn('w:sz'), '12')
+            _div2_bot.set(qn('w:space'), '1')
+            _div2_bot.set(qn('w:color'), '1A3A6B')
+            _div2_pBdr.append(_div2_bot)
+            _div2_pPr.append(_div2_pBdr)
+
             spacer(doc, 4)
 
-            # ── TABLE 4: REV 0R (Response — blank) ───────────────────────
-            t4 = doc.add_table(rows=3, cols=3)
-            t4.style = 'Table Grid'
-            set_table_width(t4, cw)
+            # ── TABLE D: REV 0R Response (3 rows, 3 cols) ────────────────
+            _td_cw = [round(cw_p2*0.38, 3), round(cw_p2*0.31, 3),
+                      round(cw_p2 - cw_p2*0.38 - cw_p2*0.31, 3)]
+            t_d = doc.add_table(rows=3, cols=3)
+            t_d.style = 'Table Grid'
+            set_table_width(t_d, cw_p2)
 
             # Row 0: header
-            t4_h0 = t4.cell(0, 0); t4_h1 = t4.cell(0, 1); t4_h2 = t4.cell(0, 2)
-            set_cell_width(t4_h0, t3_col_w[0])
-            set_cell_width(t4_h1, t3_col_w[1])
-            set_cell_width(t4_h2, t3_col_w[2])
-            set_cell_margins(t4_h0, 60, 60, 100, 100)
-            set_cell_margins(t4_h1, 60, 60, 100, 100)
-            set_cell_margins(t4_h2, 60, 60, 100, 100)
-            set_cell_bg(t4_h0, C_ACCENT)
-            t4_h0.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-            t4_h1.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-            t4_h2.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-            t4_hp = para(t4_h0, "RFI REV 0R", bold=True, size=10)
-            t4_hp.runs[0].font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-            para(t4_h1, "Date Sent:  ", size=9)
-            para(t4_h2, "Response Due Date:  ", size=9)
+            for ci, _td_hc in enumerate([t_d.cell(0, ci) for ci in range(3)]):
+                set_cell_width(_td_hc, _td_cw[ci])
+                set_cell_margins(_td_hc, 60, 60, 100, 100)
+                _td_hc.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+            set_cell_bg(t_d.cell(0, 0), C_ACCENT)
+            _td_h0_p = t_d.cell(0, 0).paragraphs[0]
+            _td_h0_p.paragraph_format.space_before = Pt(0)
+            _td_h0_p.paragraph_format.space_after  = Pt(0)
+            _td_h0_r = _td_h0_p.add_run("RFI Rev 0R — Response")
+            _td_h0_r.bold = True; _td_h0_r.font.size = Pt(10)
+            _td_h0_r.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+            para(t_d.cell(0, 1), "Date:  ", size=9)
+            _td_h2_p = t_d.cell(0, 2).paragraphs[0]
+            _td_h2_p.paragraph_format.space_before = Pt(0)
+            _td_h2_p.paragraph_format.space_after  = Pt(0)
+            _td_h2_r = _td_h2_p.add_run(f"Response Due Date:  {response_by}")
+            _td_h2_r.font.size = Pt(9)
 
-            # Row 1: Response (merged full width, blank — tall)
-            t4_r = t4.cell(1, 0).merge(t4.cell(1, 2))
-            for _p in t4_r.paragraphs[1:]:
-                _p._element.getparent().remove(_p._element)
-            set_cell_margins(t4_r, 80, 80, 100, 100)
-            t4_r.vertical_alignment = WD_ALIGN_VERTICAL.TOP
-            t4_rp = t4_r.paragraphs[0]
-            t4_rp.paragraph_format.space_before = Pt(0)
-            t4_rp.paragraph_format.space_after  = Pt(0)
-            t4_rl = t4_rp.add_run("Response:"); t4_rl.bold = True; t4_rl.font.size = Pt(10)
-            _set_row_min_height(t4.rows[1], 1.5)
+            # Row 1: Response (merged, blank, min height 1.8)
+            _td_r = t_d.cell(1, 0).merge(t_d.cell(1, 2))
+            for _p in _td_r.paragraphs[1:]: _p._element.getparent().remove(_p._element)
+            set_cell_margins(_td_r, 80, 80, 100, 100)
+            set_cell_bg(_td_r, "FFFEF5")
+            _td_r.vertical_alignment = WD_ALIGN_VERTICAL.TOP
+            _td_rp = _td_r.paragraphs[0]
+            _td_rp.paragraph_format.space_before = Pt(0)
+            _td_rp.paragraph_format.space_after  = Pt(0)
+            _td_rl = _td_rp.add_run("Response")
+            _td_rl.bold = True; _td_rl.font.size = Pt(10); _td_rl.font.color.rgb = C_BLUE
+            _set_row_min_height(t_d.rows[1], 1.8)
 
-            # Row 2: Reference Document No (blank)
-            t4_r2_lc = t4.cell(2, 0)
-            t4_r2_vc = t4.cell(2, 1).merge(t4.cell(2, 2))
-            for _p in t4_r2_vc.paragraphs[1:]:
-                _p._element.getparent().remove(_p._element)
-            set_cell_width(t4_r2_lc, t3_col_w[0])
-            set_cell_margins(t4_r2_lc, 60, 60, 100, 100)
-            set_cell_margins(t4_r2_vc, 60, 60, 100, 100)
-            set_cell_bg(t4_r2_lc, C_INFOBG)
-            t4_r2_lc.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-            t4_r2_vc.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-            para(t4_r2_lc, "Reference Document No:", bold=True, size=9)
-            para(t4_r2_vc, "", size=9)
+            # Row 2: Reference (col 0+1 merged, blank)
+            _td_r2_left  = t_d.cell(2, 0).merge(t_d.cell(2, 1))
+            _td_r2_right = t_d.cell(2, 2)
+            for _p in _td_r2_left.paragraphs[1:]: _p._element.getparent().remove(_p._element)
+            set_cell_bg(_td_r2_left, C_INFOBG); set_cell_bg(_td_r2_right, C_INFOBG)
+            set_cell_margins(_td_r2_left, 60, 60, 100, 100)
+            set_cell_margins(_td_r2_right, 60, 60, 100, 100)
+            _td_r2l_p = _td_r2_left.paragraphs[0]
+            _td_r2l_p.paragraph_format.space_before = Pt(0)
+            _td_r2l_p.paragraph_format.space_after  = Pt(0)
+            _td_r2l_lbl = _td_r2l_p.add_run("Reference document")
+            _td_r2l_lbl.bold = True; _td_r2l_lbl.font.size = Pt(8); _td_r2l_lbl.font.color.rgb = C_BLUE
 
             spacer(doc, 4)
 
-            # ── TABLE 5: Impact and Approval ──────────────────────────────
-            t5_lw = round(1.5 * s, 3)
-            t5_vw = round((cw - t5_lw) / 4, 3)
-            t5 = doc.add_table(rows=3, cols=5)
-            t5.style = 'Table Grid'
-            set_table_width(t5, cw)
+            # ── TABLE E: Impact (2 rows, 5 cols) ─────────────────────────
+            _te_col0_w = 1.2
+            _te_rest_w = round((cw_p2 - _te_col0_w) / 4, 3)
+            t_e = doc.add_table(rows=2, cols=5)
+            t_e.style = 'Table Grid'
+            set_table_width(t_e, cw_p2)
 
-            # Row 0: Impact
-            t5_r0_cells = [t5.cell(0, ci) for ci in range(5)]
-            set_cell_width(t5_r0_cells[0], t5_lw)
+            # Row 0: Impact checkboxes
+            _te_r0 = [t_e.cell(0, ci) for ci in range(5)]
+            set_cell_width(_te_r0[0], _te_col0_w)
             for ci in range(1, 5):
-                set_cell_width(t5_r0_cells[ci], t5_vw)
+                set_cell_width(_te_r0[ci], _te_rest_w)
             for ci in range(5):
-                set_cell_margins(t5_r0_cells[ci], 60, 60, 100, 100)
-            set_cell_bg(t5_r0_cells[0], C_INFOBG)
-            t5_r0_cells[0].vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-            para(t5_r0_cells[0], "Impact to:", bold=True, size=9)
-            _impact_cell(t5_r0_cells[1], "Cost",                      issue.get('cost_impact',          'TBD'))
-            _impact_cell(t5_r0_cells[2], "Schedule",                   issue.get('schedule_impact',      'TBD'))
-            _impact_cell(t5_r0_cells[3], "Environmental / Regulatory", issue.get('environmental_impact', 'TBD'))
-            _impact_cell(t5_r0_cells[4], "Public Affairs",             issue.get('public_affairs_impact','TBD'))
-            _set_row_min_height(t5.rows[0], 0.9)
+                set_cell_margins(_te_r0[ci], 60, 60, 100, 100)
+            set_cell_bg(_te_r0[0], C_ACCENT)
+            _te_r0[0].vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+            _te_r0_p = _te_r0[0].paragraphs[0]
+            _te_r0_p.paragraph_format.space_before = Pt(0)
+            _te_r0_p.paragraph_format.space_after  = Pt(0)
+            _te_r0_r = _te_r0_p.add_run("Impact to:")
+            _te_r0_r.bold = True; _te_r0_r.font.size = Pt(9)
+            _te_r0_r.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+            _impact_cell(_te_r0[1], "Cost",                       issue.get('cost_impact',          'TBD'))
+            _impact_cell(_te_r0[2], "Schedule",                    issue.get('schedule_impact',      'TBD'))
+            _impact_cell(_te_r0[3], "Environmental /\nRegulatory", issue.get('environmental_impact', 'TBD'))
+            _impact_cell(_te_r0[4], "Public Affairs",              issue.get('public_affairs_impact','TBD'))
+            _set_row_min_height(t_e.rows[0], 0.9)
 
             # Row 1: Employer's Instruction (merged, blank)
-            t5_r1 = t5.cell(1, 0).merge(t5.cell(1, 4))
-            for _p in t5_r1.paragraphs[1:]:
-                _p._element.getparent().remove(_p._element)
-            set_cell_margins(t5_r1, 80, 80, 100, 100)
-            t5_r1.vertical_alignment = WD_ALIGN_VERTICAL.TOP
-            t5_r1_p = t5_r1.paragraphs[0]
-            t5_r1_p.paragraph_format.space_before = Pt(0)
-            t5_r1_p.paragraph_format.space_after  = Pt(0)
-            t5_r1_l = t5_r1_p.add_run("Employer's Instruction:"); t5_r1_l.bold = True; t5_r1_l.font.size = Pt(9)
-            _set_row_min_height(t5.rows[1], 0.8)
+            _te_r1 = t_e.cell(1, 0).merge(t_e.cell(1, 4))
+            for _p in _te_r1.paragraphs[1:]: _p._element.getparent().remove(_p._element)
+            set_cell_margins(_te_r1, 80, 80, 100, 100)
+            set_cell_bg(_te_r1, "FFFEF5")
+            _te_r1.vertical_alignment = WD_ALIGN_VERTICAL.TOP
+            _te_r1_p = _te_r1.paragraphs[0]
+            _te_r1_p.paragraph_format.space_before = Pt(0)
+            _te_r1_p.paragraph_format.space_after  = Pt(0)
+            _te_r1_l = _te_r1_p.add_run("Employer's instruction")
+            _te_r1_l.bold = True; _te_r1_l.font.size = Pt(9); _te_r1_l.font.color.rgb = C_BLUE
+            _set_row_min_height(t_e.rows[1], 0.9)
 
-            # Row 2: Approval Signature (merged)
-            t5_r2 = t5.cell(2, 0).merge(t5.cell(2, 4))
-            for _p in t5_r2.paragraphs[1:]:
-                _p._element.getparent().remove(_p._element)
-            set_cell_margins(t5_r2, 80, 80, 100, 100)
-            t5_r2.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-            t5_r2_p1 = t5_r2.paragraphs[0]
-            t5_r2_p1.paragraph_format.space_before = Pt(0)
-            t5_r2_p1.paragraph_format.space_after  = Pt(4)
-            t5_r2_lbl = t5_r2_p1.add_run("Approval Signature:"); t5_r2_lbl.bold = True; t5_r2_lbl.font.size = Pt(9)
-            t5_r2_p2 = t5_r2.add_paragraph()
-            t5_r2_p2.paragraph_format.space_before = Pt(0)
-            t5_r2_p2.paragraph_format.space_after  = Pt(0)
-            t5_r2_p2.add_run(f"Name: {ORIGINATOR_NAME}     Signature: ________________________     Date: {today_str}").font.size = Pt(9)
+            spacer(doc, 4)
+
+            # ── TABLE F: Approval (2 rows, 3 cols) ────────────────────────
+            _tf_cw = [round(cw_p2*0.35, 3), round(cw_p2*0.35, 3),
+                      round(cw_p2 - cw_p2*0.35 - cw_p2*0.35, 3)]
+            t_f = doc.add_table(rows=2, cols=3)
+            t_f.style = 'Table Grid'
+            set_table_width(t_f, cw_p2)
+
+            # Row 0: header (merged, navy)
+            _tf_r0 = t_f.cell(0, 0).merge(t_f.cell(0, 2))
+            for _p in _tf_r0.paragraphs[1:]: _p._element.getparent().remove(_p._element)
+            set_cell_bg(_tf_r0, C_ACCENT)
+            set_cell_margins(_tf_r0, 60, 60, 100, 100)
+            _tf_r0_p = _tf_r0.paragraphs[0]
+            _tf_r0_p.paragraph_format.space_before = Pt(0)
+            _tf_r0_p.paragraph_format.space_after  = Pt(0)
+            _tf_r0_r = _tf_r0_p.add_run("Approval & signature")
+            _tf_r0_r.bold = True; _tf_r0_r.font.size = Pt(10)
+            _tf_r0_r.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+
+            # Row 1: Name | Signature | Date
+            _tf_r1 = [t_f.cell(1, ci) for ci in range(3)]
+            for ci, _c in enumerate(_tf_r1):
+                set_cell_width(_c, _tf_cw[ci])
+                set_cell_margins(_c, 80, 80, 100, 100)
+                _c.vertical_alignment = WD_ALIGN_VERTICAL.TOP
+
+            # Col 0: Name
+            _tf_n_p = _tf_r1[0].paragraphs[0]
+            _tf_n_p.paragraph_format.space_before = Pt(0)
+            _tf_n_p.paragraph_format.space_after  = Pt(2)
+            _tf_n_lbl = _tf_n_p.add_run("Name")
+            _tf_n_lbl.bold = True; _tf_n_lbl.font.size = Pt(8); _tf_n_lbl.font.color.rgb = C_BLUE
+            _tf_n_vp = _tf_r1[0].add_paragraph()
+            _tf_n_vp.paragraph_format.space_before = Pt(0)
+            _tf_n_vp.paragraph_format.space_after  = Pt(0)
+            _tf_n_vr = _tf_n_vp.add_run(ORIGINATOR_NAME)
+            _tf_n_vr.bold = True; _tf_n_vr.font.size = Pt(10)
+            _tf_n_cp = _tf_r1[0].add_paragraph()
+            _tf_n_cp.paragraph_format.space_before = Pt(0)
+            _tf_n_cp.paragraph_format.space_after  = Pt(0)
+            _tf_n_cr = _tf_n_cp.add_run(
+                f"{ORIGINATOR_TITLE} — {COMPANY_NAME}" if ORIGINATOR_TITLE else COMPANY_NAME)
+            _tf_n_cr.font.size = Pt(8); _tf_n_cr.font.color.rgb = C_GRAY
+
+            # Col 1: Signature
+            _tf_s_p = _tf_r1[1].paragraphs[0]
+            _tf_s_p.paragraph_format.space_before = Pt(0)
+            _tf_s_p.paragraph_format.space_after  = Pt(2)
+            _tf_s_lbl = _tf_s_p.add_run("Signature")
+            _tf_s_lbl.bold = True; _tf_s_lbl.font.size = Pt(8); _tf_s_lbl.font.color.rgb = C_BLUE
+            _tf_s_vp = _tf_r1[1].add_paragraph()
+            _tf_s_vp.paragraph_format.space_before = Pt(0)
+            _tf_s_vp.paragraph_format.space_after  = Pt(0)
             if SIGNATURE_IMG and os.path.exists(SIGNATURE_IMG):
                 try:
-                    t5_r2_p2.runs[0].text = f"Name: {ORIGINATOR_NAME}     Signature: "
-                    t5_r2_p2.add_run().add_picture(SIGNATURE_IMG, height=Inches(0.30))
-                    t5_r2_p2.add_run(f"     Date: {today_str}").font.size = Pt(9)
+                    _tf_s_vp.add_run().add_picture(SIGNATURE_IMG, height=Inches(0.35))
                     logs.append("    Signature embedded")
-                except Exception as e:
-                    logs.append(f"    Signature warning: {e}")
+                except Exception as _sig_e:
+                    logs.append(f"    Signature warning: {_sig_e}")
+                    _tf_s_vp.add_run("________________________").font.size = Pt(9)
+            else:
+                _tf_s_vp.add_run("________________________").font.size = Pt(9)
+
+            # Col 2: Date
+            _tf_d_p = _tf_r1[2].paragraphs[0]
+            _tf_d_p.paragraph_format.space_before = Pt(0)
+            _tf_d_p.paragraph_format.space_after  = Pt(2)
+            _tf_d_lbl = _tf_d_p.add_run("Date")
+            _tf_d_lbl.bold = True; _tf_d_lbl.font.size = Pt(8); _tf_d_lbl.font.color.rgb = C_BLUE
+            _tf_d_vp = _tf_r1[2].add_paragraph()
+            _tf_d_vp.paragraph_format.space_before = Pt(0)
+            _tf_d_vp.paragraph_format.space_after  = Pt(0)
+            _tf_d_vp.add_run(today_str).font.size = Pt(9)
+
+            spacer(doc, 6)
+
+            # ── Footer paragraph (navy bg, white text) ────────────────────
+            _ft = f"{COMPANY_NAME}  ·  {rfi_ref}  ·  {PROJECT_NAME}  ·  {today_str}  ·  CONFIDENTIAL"
+            footer_para = doc.add_paragraph()
+            footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            footer_para.paragraph_format.space_before = Pt(0)
+            footer_para.paragraph_format.space_after  = Pt(0)
+            _ft_r = footer_para.add_run(_ft)
+            _ft_r.font.size = Pt(9)
+            _ft_r.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+            _fp_pPr = footer_para._p.get_or_add_pPr()
+            _fp_shd = OxmlElement('w:shd')
+            _fp_shd.set(qn('w:val'), 'clear')
+            _fp_shd.set(qn('w:color'), 'auto')
+            _fp_shd.set(qn('w:fill'), '1A3A6B')
+            _fp_pPr.append(_fp_shd)
 
             logs.append(f"  {rfi_ref} done - OK")
 
