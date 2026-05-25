@@ -392,17 +392,6 @@ def save_cfg(cfg: dict, email: str = None):
         except Exception as e:
             _log_error("save_cfg[supabase]", e)
             _warn("Could not connect to database. Working in offline mode.")
-    # File write — atomic: write temp then rename so a crash mid-write never corrupts the file
-    cfg_file = _user_cfg_path(email)
-    try:
-        cfg_file.parent.mkdir(parents=True, exist_ok=True)
-        tmp = cfg_file.with_suffix(".tmp")
-        with open(tmp, "w") as f:
-            json.dump(cfg, f, indent=2)
-        tmp.replace(cfg_file)   # atomic on same filesystem
-    except Exception as e:
-        _log_error("save_cfg[file]", e)
-        _warn("Could not save data. Check error_log.txt for details.")
 
 
 def load_rfi_templates(email: str) -> dict:
@@ -647,6 +636,48 @@ def upload_project_document(email: str, pid: str, filename: str, data: bytes) ->
         _log_error("upload_project_document", e)
         return False
 
+
+def list_project_documents(email: str, pid: str) -> list:
+    """List generated .docx filenames from Supabase Storage for this project.
+    Storage path: {email_folder}/{pid}/output/
+    Returns list of filename strings sorted newest-first (reverse alpha).
+    Never raises.
+    """
+    sb = _get_storage_client()
+    if not sb:
+        return []
+    folder = f"{email_to_folder(email)}/{pid}/output"
+    try:
+        items = sb.storage.from_("rfi-manager-files").list(folder)
+    except Exception as e:
+        _log_error("list_project_documents/list", e)
+        return []
+    if not items:
+        return []
+    names = []
+    for item in items:
+        name = item.get("name", "") if isinstance(item, dict) else str(item)
+        if not name or name == ".emptyFolderPlaceholder":
+            continue
+        if name.endswith(".docx"):
+            names.append(name)
+    return sorted(names, reverse=True)
+
+
+def download_project_document(email: str, pid: str, filename: str):
+    """Download a .docx file from Supabase Storage. Returns bytes or None."""
+    sb = _get_storage_client()
+    if not sb:
+        return None
+    storage_path = f"{email_to_folder(email)}/{pid}/output/{filename}"
+    try:
+        data = sb.storage.from_("rfi-manager-files").download(storage_path)
+        return data if data else None
+    except Exception as e:
+        _log_error(f"download_project_document/{filename}", e)
+        return None
+
+
 def delete_project(email: str, pid: str) -> bool:
     """Soft-delete a project in Supabase and remove local folder.
     Sets deleted_at to now; local filesystem folder is removed.
@@ -742,14 +773,17 @@ def _list_project_ids(email: str = "") -> list:
     return sorted([p.name for p in d.iterdir() if p.is_dir()])
 
 
-def _new_project_id(email: str = "") -> str:
+def _new_project_id(email: str = "", name: str = "") -> str:
     existing = set(_list_project_ids(email))
-    n = 1
     while True:
-        pid = f"proj_{n:03d}"
+        if name:
+            slug = re.sub(r"[^a-z0-9 ]", "", name.lower()).strip()
+            slug = re.sub(r" +", "-", slug)[:40].rstrip("-")
+            pid = f"{slug}-{uuid.uuid4().hex[:4]}"
+        else:
+            pid = f"proj-{uuid.uuid4().hex[:4]}"
         if pid not in existing:
             return pid
-        n += 1
 
 
 def proj_dir(pid: str, email: str = "") -> Path:
@@ -799,17 +833,6 @@ def save_project_cfg(pid: str, cfg: dict, email: str = ""):
         except Exception as e:
             _log_error("save_project_cfg[supabase]", e)
             _warn("Could not connect to database. Working in offline mode.")
-    # Local fallback — atomic write so a crash mid-write never corrupts the file
-    cfg_file = proj_dir(pid, email) / "config.json"
-    try:
-        cfg_file.parent.mkdir(parents=True, exist_ok=True)
-        tmp = cfg_file.with_suffix(".tmp")
-        with open(tmp, "w") as f:
-            json.dump(cfg, f, indent=2)
-        tmp.replace(cfg_file)
-    except Exception as e:
-        _log_error("save_project_cfg[file]", e)
-        _warn("Could not save data. Check error_log.txt for details.")
 
 
 def load_project_clients(pid: str, email: str = "") -> list:
@@ -898,15 +921,6 @@ def save_project_approved(pid: str, rfis: list, email: str = ""):
             }, on_conflict="email,project_id").execute()
         except Exception as e:
             _log_error("save_project_approved[supabase]", e)
-    # Also write locally
-    d = proj_dir(pid, email)
-    d.mkdir(parents=True, exist_ok=True)
-    try:
-        with open(d / "approved_rfis.json", "w") as f:
-            json.dump(rfis, f, indent=2)
-    except Exception as e:
-        _log_error("save_project_approved[local]", e)
-        _warn("Could not save data. Check error_log.txt for details.")
 
 
 def load_project_scan_results(pid: str, email: str = "") -> list:
@@ -948,14 +962,6 @@ def save_project_scan_results(pid: str, results: list, email: str = ""):
             }, on_conflict="email,project_id").execute()
         except Exception as e:
             _log_error("save_project_scan_results[supabase]", e)
-    d = proj_dir(pid, email)
-    d.mkdir(parents=True, exist_ok=True)
-    try:
-        with open(d / "scan_results.json", "w") as f:
-            json.dump(results, f, indent=2)
-    except Exception as e:
-        _log_error("save_project_scan_results[local]", e)
-        _warn("Could not save data. Check error_log.txt for details.")
 
 
 def load_project_captions(pid: str, email: str = "") -> dict:
@@ -997,13 +1003,6 @@ def save_project_captions(pid: str, captions: dict, email: str = ""):
             }, on_conflict="email,project_id").execute()
         except Exception as e:
             _log_error("save_project_captions[supabase]", e)
-    snaps = proj_snapshots_dir(pid, email)
-    try:
-        with open(snaps / "snap_captions.json", "w") as f:
-            json.dump(captions, f, indent=2)
-    except Exception as e:
-        _log_error("save_project_captions[local]", e)
-        _warn("Could not save data. Check error_log.txt for details.")
 
 
 def proj_snapshots_dir(pid: str, email: str = "") -> Path:
@@ -1139,17 +1138,6 @@ def load_project_register(pid: str, email: str = "") -> list:
         return []
 
 
-def save_project_register(pid: str, rows: list, email: str = ""):
-    d = proj_dir(pid, email)
-    d.mkdir(parents=True, exist_ok=True)
-    try:
-        with open(d / "register.json", "w") as f:
-            json.dump(rows, f, indent=2)
-    except Exception as e:
-        _log_error("save_project_register", e)
-        _warn("Could not save data. Check error_log.txt for details.")
-
-
 def upsert_project_register_rows(pid: str, approved: list, proj_name: str, email: str = ""):
     """Add/update register rows from an approved list; preserve existing statuses."""
     rows   = load_project_register(pid, email)
@@ -1179,8 +1167,7 @@ def upsert_project_register_rows(pid: str, approved: list, proj_name: str, email
             rows[by_rfi[rn]] = row
         else:
             rows.append(row)
-    save_project_register(pid, rows, email)
-    # Also upsert into Supabase rfi_register table
+    # Upsert into Supabase rfi_register table
     sb = _get_storage_client()
     if sb and email and pid:
         try:
@@ -1221,7 +1208,6 @@ def update_project_register_status(pid: str, rfi_num: int, status: str, email: s
     for row in rows:
         if row.get("rfi_number") == rfi_num:
             row["status"] = status
-    save_project_register(pid, rows, email)
     sb = _get_storage_client()
     if sb and email and pid:
         try:

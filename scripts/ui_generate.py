@@ -16,6 +16,7 @@ from data_layer import (
     upload_project_document, sync_snapshots_from_supabase,
     upload_project_snapshot, load_project_register,
     load_rfi_templates, save_rfi_templates,
+    list_project_documents, download_project_document,
     SCRIPTS_PY_DIR,
 )
 from generate_rfi import generate_rfi_document
@@ -69,7 +70,8 @@ def render_tab_generate(email: str):
 
     # ── Summary strip ────────────────────────────────────────────────────────
     gm1, gm2, gm3 = st.columns(3)
-    _total_rfis = len(list(out_dir.glob("*.docx")))
+    _sb_doc_names = list_project_documents(email, pid)
+    _total_rfis   = len(_sb_doc_names)
     gm1.metric("RFIs", _total_rfis)
     gm2.metric("Project",    pcfg.get("name", "—"))
     gm3.metric("Recipients", len(clients))
@@ -138,7 +140,10 @@ def render_tab_generate(email: str):
         _lp_cards_shown = 0
         for _lp_issue in approved:
             _lp_rfi_n = get_rfi_num(_lp_issue, 1)
-            if any(f"RFI_{_lp_rfi_n:03d}" in p.name for p in out_dir.glob("*.docx")):
+            _rfi_tag = f"RFI_{_lp_rfi_n:03d}"
+            _in_local = any(_rfi_tag in p.name for p in out_dir.glob("*.docx"))
+            _in_cloud = any(_rfi_tag in n for n in _sb_doc_names)
+            if _in_local or _in_cloud:
                 continue
             _lp_cards_shown += 1
             _lp_snaps = _local_snaps(snaps_dir, _lp_rfi_n, max_snaps)
@@ -827,30 +832,41 @@ def render_tab_generate(email: str):
 
     # ── Previous documents ───────────────────────────────────────────────────
     st.markdown("---")
-    prev_docs = sorted(out_dir.glob("*.docx"),
-                       key=lambda p: p.stat().st_mtime, reverse=True)
-    if prev_docs:
-        with st.expander(f"📂  Previously generated documents ({len(prev_docs)})"):
+    _all_names = _sb_doc_names
+    if _all_names:
+        with st.expander(f"📂  Previously generated documents ({len(_all_names)})"):
             st.markdown(
+                '<style>details:has(.rfi-doc-list-marker) > div {'
+                'max-height:400px;overflow-y:auto;'
+                'border:1px solid #e5e7eb;border-radius:6px;'
+                '}</style>'
+                '<div class="rfi-doc-list-marker" style="display:none;"></div>'
                 '<div style="display:grid;grid-template-columns:5fr 1fr;'
                 'background:#fafafa;border-bottom:1px solid #f0f0f0;'
                 'padding:4px 0;font-size:10.5px;color:#9ca3af;'
                 'text-transform:uppercase;font-weight:600;">'
                 '<span>Filename</span><span>Download</span></div>',
                 unsafe_allow_html=True)
-            for doc_path in prev_docs[:10]:
+            for _doc_name in _all_names:
                 dc1, dc2 = st.columns([5, 1])
                 dc1.markdown(
-                    f'<span style="color:#374151;font-size:13px;">{doc_path.name}</span>',
+                    f'<span style="color:#374151;font-size:13px;">{_doc_name}</span>',
                     unsafe_allow_html=True)
                 with dc2:
-                    with open(doc_path, "rb") as fh:
+                    _local_path = out_dir / _doc_name
+                    if _local_path.exists():
+                        with open(_local_path, "rb") as fh:
+                            _doc_bytes = fh.read()
+                    else:
+                        with st.spinner("Loading…"):
+                            _doc_bytes = download_project_document(email, pid, _doc_name)
+                    if _doc_bytes:
                         st.download_button(
                             "↓ Download",
-                            data=fh,
-                            file_name=doc_path.name,
+                            data=_doc_bytes,
+                            file_name=_doc_name,
                             mime="application/vnd.openxmlformats-officedocument"
                                  ".wordprocessingml.document",
                             use_container_width=True,
-                            key=f"dl_{doc_path.stem}",
+                            key=f"dl_{_doc_name.replace('.docx', '')}",
                         )

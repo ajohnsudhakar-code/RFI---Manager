@@ -237,6 +237,35 @@ def render_tab_project(email: str):
                         pcfg["pdf"] = str(Path("drawings") / sel_pdf)
                     else:
                         pcfg["pdf"] = ""
+                    if _is_new_pid:
+                        slug_pid = _new_project_id(email, proj_name.strip())
+                        _t2_keys_to_migrate = [
+                            f"t2_proj_name_{pid}",
+                            f"t2_proj_address_{pid}",
+                            f"t2_proj_number_{pid}",
+                            f"t2_edit_mode_{pid}",
+                            f"t2_uploaded_pdf_{pid}",
+                            f"t2_pdf_cloud_ok_{pid}",
+                            f"t2_sel_pdf_{pid}",
+                        ]
+                        for _sk in _t2_keys_to_migrate:
+                            if _sk in st.session_state:
+                                _new_sk = _sk.replace(pid, slug_pid)
+                                st.session_state[_new_sk] = st.session_state.pop(_sk)
+                        _up_fname = st.session_state.get(f"t2_uploaded_pdf_{slug_pid}")
+                        if _up_fname:
+                            _pdf_local = _drawings_dir(pid, email) / _up_fname
+                            if _pdf_local.exists():
+                                _pdf_bytes = _pdf_local.read_bytes()
+                                _reup_ok = upload_project_pdf(email, slug_pid, _up_fname, _pdf_bytes)
+                                if _reup_ok:
+                                    st.session_state[f"t2_pdf_cloud_ok_{slug_pid}"] = True
+                                else:
+                                    st.error("❌ PDF could not be re-uploaded under the new project ID. Please re-upload and try again.")
+                                    st.stop()
+                        st.session_state["current_project_id"] = slug_pid
+                        st.session_state["t2_loaded_pid"] = None
+                        pid = slug_pid
                     save_project_cfg(pid, pcfg, email)
                     st.session_state["current_project_id"] = pid
                     st.session_state["_project_saved_ok"]  = True
