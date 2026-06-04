@@ -32,6 +32,7 @@ _DISPLAY_COLS = {
 }
 
 
+@st.cache_data(ttl=30, show_spinner=False)
 def _load_all_rows(email: str = "") -> list:
     """Scan every project folder for the given user and return combined register rows."""
     rows = []
@@ -118,7 +119,8 @@ def render_tab_register(email: str):
             filt = filt[filt["status"].astype(str) == sel_stat]
         _active_search = st.session_state.get("reg_active_search", "")
         if _active_search:
-            mask = filt.apply(
+            _search_cols = [c for c in display_cols if c in filt.columns]
+            mask = filt[_search_cols].apply(
                 lambda row: row.astype(str).str.contains(
                     _active_search, case=False, na=False).any(), axis=1)
             filt = filt[mask]
@@ -172,7 +174,10 @@ def render_tab_register(email: str):
                     unsafe_allow_html=True)
         # Build (pid, rfi_number) options from filtered df if a project is selected,
         # else from all rows.
-        source = filt if sel_proj != "All" else df
+        if sel_proj != "All" and "project_name" in df.columns:
+            source = df[df["project_name"].astype(str) == sel_proj]
+        else:
+            source = df
         if "rfi_number" in source.columns and "_pid" in source.columns:
             pairs = (
                 source[["_pid", "rfi_number", "project_name"]]
@@ -206,12 +211,14 @@ def render_tab_register(email: str):
                     _upd_pid, _upd_rn, _upd_pname = pairs[sel_pair_idx]
                     update_project_register_status(_upd_pid, int(_upd_rn), sel_status, email)
                     st.session_state["_reg_status_updated"] = f"✓ RFI-{int(_upd_rn):03d} → {sel_status}"
+                    _load_all_rows.clear()
         else:
             st.info("No RFIs available to update.")
 
         # ── Footer ────────────────────────────────────────────────────────────
         st.markdown("---")
-        foot1, foot2 = st.columns([6, 2])
+        _filters_active = (sel_proj != "All" or sel_stat != "All" or bool(_active_search))
+        foot1, foot2 = st.columns([6, 4] if _filters_active else [6, 2])
         with foot1:
             st.markdown(
                 f'<div style="color:#374151;font-size:12px;padding-top:8px;">'
@@ -219,17 +226,42 @@ def render_tab_register(email: str):
                 f'of {len(df)} records</div>',
                 unsafe_allow_html=True)
         with foot2:
-            _xlsx_buf = io.BytesIO()
-            show.rename(columns=_DISPLAY_COLS).to_excel(_xlsx_buf, index=False, engine="openpyxl")
-            _xlsx_buf.seek(0)
-            st.download_button(
-                "↓ Download Register (.xlsx)",
-                data=_xlsx_buf,
-                file_name="RFI_Register.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-                key="reg_download",
-            )
+            _full_buf = io.BytesIO()
+            _full_show = df[[c for c in display_cols if c in df.columns]]
+            _full_show.rename(columns=_DISPLAY_COLS).to_excel(_full_buf, index=False, engine="openpyxl")
+            _full_buf.seek(0)
+            if _filters_active:
+                dl_c1, dl_c2 = st.columns(2)
+                with dl_c1:
+                    st.download_button(
+                        "↓ Full Register (.xlsx)",
+                        data=_full_buf,
+                        file_name="RFI_Register_Full.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                        key="reg_download_full",
+                    )
+                with dl_c2:
+                    _filt_buf = io.BytesIO()
+                    show.rename(columns=_DISPLAY_COLS).to_excel(_filt_buf, index=False, engine="openpyxl")
+                    _filt_buf.seek(0)
+                    st.download_button(
+                        "↓ Filtered View (.xlsx)",
+                        data=_filt_buf,
+                        file_name="RFI_Register_Filtered.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                        key="reg_download_filtered",
+                    )
+            else:
+                st.download_button(
+                    "↓ Download Full Register (.xlsx)",
+                    data=_full_buf,
+                    file_name="RFI_Register_Full.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    key="reg_download_full",
+                )
 
     except ImportError:
         st.error("pandas not installed. Run: `pip install pandas openpyxl`")

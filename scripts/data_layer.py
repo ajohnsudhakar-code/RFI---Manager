@@ -1204,10 +1204,6 @@ def upsert_project_register_rows(pid: str, approved: list, proj_name: str, email
 
 
 def update_project_register_status(pid: str, rfi_num: int, status: str, email: str = ""):
-    rows = load_project_register(pid, email)
-    for row in rows:
-        if row.get("rfi_number") == rfi_num:
-            row["status"] = status
     sb = _get_storage_client()
     if sb and email and pid:
         try:
