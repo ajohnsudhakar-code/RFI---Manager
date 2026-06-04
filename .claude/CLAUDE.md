@@ -106,7 +106,7 @@ All source files live in `scripts/`. Each file has ONE job — never put logic i
 | Tab 3 — Analyse Drawings | ✅ Fully audited and complete |
 | Tab 4 — Crop and Annotate | ✅ Fully audited and complete |
 | Tab 5 — Generate RFI | ✅ Fully audited and complete |
-| Tab 6 — RFI Register | ⚠️ Working — not yet audited |
+| Tab 6 — RFI Register | ✅ Fully audited and complete |
 | generate_rfi.py | ✅ Fully rebuilt — two-page professional layout with all sections |
 | Auth / login / signup / password reset | ✅ Complete and deployed |
 | Deployed to Streamlit Cloud | ✅ Live |
@@ -115,10 +115,7 @@ All source files live in `scripts/`. Each file has ONE job — never put logic i
 
 ## 8 — ACTIVE TASKS — PENDING
 
-**Priority 1: Tab 6 Register — full audit**
-Same process used for Tabs 1–4.
-
-**Priority 2: generate_rfi.py pending work**
+**Priority 1: generate_rfi.py pending work**
 
 **Remaining pre-deployment:**
 - Add http://localhost:8501 to Supabase Redirect URLs for local dev
@@ -137,6 +134,7 @@ Same process used for Tabs 1–4.
 - Project IDs are now human-readable slugs e.g. mary-durnal-projects-a3f2 — old proj_001 style IDs exist only for soft-deleted test projects
 - Previously generated documents and left panel RFI hide logic both read from Supabase Storage — survives container restarts
 - Local disk used only as session cache for PDFs and snapshots — all structured data writes go to Supabase only
+- `ui_generate.py` lines 404 and 480 — `st.text_input` with empty label — accessibility warning, will become error in future Streamlit versions — fix: add `label_visibility="collapsed"`
 
 ---
 
