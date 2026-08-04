@@ -115,8 +115,6 @@ All source files live in `scripts/`. Each file has ONE job — never put logic i
 
 ## 8 — ACTIVE TASKS — PENDING
 
-**Priority 1: generate_rfi.py pending work**
-
 **Remaining pre-deployment:**
 - Add http://localhost:8501 to Supabase Redirect URLs for local dev
 - Upgrade Supabase to Pro tier (free tier hitting usage limits)

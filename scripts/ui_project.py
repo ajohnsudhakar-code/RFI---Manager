@@ -274,6 +274,8 @@ def render_tab_project(email: str):
                     st.session_state.pop("_pid_is_new_unsaved", None)
                     st.session_state.pop(f"t2_uploaded_pdf_{pid}", None)
                     st.session_state.pop(f"t2_pdf_cloud_ok_{pid}", None)
+                    st.session_state.pop("_sb_labels", None)
+                    st.session_state.pop("_sb_label_pids", None)
                 except Exception as _save_err:
                     st.error(f"❌ Save failed: {type(_save_err).__name__}: {_save_err}")
                     st.stop()

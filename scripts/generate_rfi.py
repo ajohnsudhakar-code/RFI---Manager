@@ -332,12 +332,9 @@ def generate_rfi_document(config: dict) -> dict:
             return p
 
         def get_snapshots(rfi_num):
-            snaps = []
-            for i in range(1, MAX_SNAPSHOTS + 1):
-                path = os.path.join(SNAPSHOTS_DIR, f"RFI_{rfi_num:03d}_snap{i}.png")
-                if os.path.exists(path):
-                    snaps.append(path)
-            return snaps
+            import glob as _glob
+            pattern = os.path.join(SNAPSHOTS_DIR, f"RFI_{rfi_num:03d}_*_snap*.png")
+            return sorted(_glob.glob(pattern))
 
         # ── Logo / signature ──────────────────────────────────────────────────
         LOGO_IMG      = _abs(_paths.get("logo",      _co.get("company_logo",    "")))

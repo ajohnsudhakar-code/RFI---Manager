@@ -737,6 +737,21 @@ def email_to_folder(email: str) -> str:
     return re.sub(r"\.", "_dot_", email.strip().lower().replace("@", "_at_"))
 
 
+def pdf_filename_slug(pdf_filename: str) -> str:
+    """Convert a PDF filename to a stable slug for use in snapshot filenames.
+
+    Strips extension, lowercases, removes non-alphanumeric-non-space chars,
+    collapses spaces to hyphens, truncates to 24 chars, strips trailing hyphen.
+    Returns "drawing" if the result would be empty.
+    """
+    stem = Path(pdf_filename).stem
+    lower = stem.lower()
+    clean = re.sub(r"[^a-z0-9 ]", "", lower)
+    slugged = re.sub(r" +", "-", clean.strip())
+    truncated = slugged[:24].rstrip("-")
+    return truncated or "drawing"
+
+
 def _user_projects_dir(email: str) -> Path:
     """Return (and lazily create) the per-user projects subdirectory.
 

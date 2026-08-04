@@ -118,12 +118,18 @@ st.markdown("""
 /* ── Hide Streamlit chrome ── */
 #MainMenu                    { display: none !important; }
 footer                       { display: none !important; }
-[data-testid="stToolbar"]    { display: none !important; }
 [data-testid="stDecoration"] { display: none !important; }
-[data-testid="collapsedControl"] { display: none !important; }
 [data-testid="stSidebarResizeHandle"] { display: none !important; }
 [data-testid="stSidebarNav"]          { display: none !important; }
-[data-testid="stHeader"]              { display: none !important; }
+[data-testid="stHeader"] {
+    background: transparent !important;
+    pointer-events: none !important;
+}
+[data-testid="stToolbar"] { visibility: hidden !important; }
+[data-testid="stExpandSidebarButton"] {
+    visibility: visible !important;
+    pointer-events: auto !important;
+}
 
 /* ── Base ── */
 html, body, [class*="css"] {

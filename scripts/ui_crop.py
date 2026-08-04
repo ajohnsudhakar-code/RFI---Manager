@@ -21,27 +21,28 @@ from data_layer import (
     sync_snapshots_from_supabase,
     load_project_captions, save_project_captions,
     load_project_sheet_map,
+    pdf_filename_slug,
 )
 
 # ── Local snapshot helpers (per-project filesystem) ──────────────────────────
 
-def _local_snaps(snaps_dir: Path, rfi_num: int, max_snaps: int) -> list[str]:
+def _local_snaps(snaps_dir: Path, rfi_num: int, max_snaps: int, pdf_slug: str) -> list[str]:
     """Return list of existing snap filenames for this RFI."""
     return [
-        f"RFI_{rfi_num:03d}_snap{i}.png"
+        f"RFI_{rfi_num:03d}_{pdf_slug}_snap{i}.png"
         for i in range(1, max_snaps + 1)
-        if (snaps_dir / f"RFI_{rfi_num:03d}_snap{i}.png").exists()
+        if (snaps_dir / f"RFI_{rfi_num:03d}_{pdf_slug}_snap{i}.png").exists()
     ]
 
 
-def _local_snap_count(snaps_dir: Path, rfi_num: int, max_snaps: int) -> int:
-    return len(_local_snaps(snaps_dir, rfi_num, max_snaps))
+def _local_snap_count(snaps_dir: Path, rfi_num: int, max_snaps: int, pdf_slug: str) -> int:
+    return len(_local_snaps(snaps_dir, rfi_num, max_snaps, pdf_slug))
 
 
-def _local_next_snap(snaps_dir: Path, rfi_num: int, max_snaps: int):
+def _local_next_snap(snaps_dir: Path, rfi_num: int, max_snaps: int, pdf_slug: str):
     """Return the next available snap slot number, or None if full."""
     for i in range(1, max_snaps + 1):
-        if not (snaps_dir / f"RFI_{rfi_num:03d}_snap{i}.png").exists():
+        if not (snaps_dir / f"RFI_{rfi_num:03d}_{pdf_slug}_snap{i}.png").exists():
             return i
     return None
 
@@ -82,6 +83,7 @@ def render_tab_crop(email: str):
 
     max_snaps  = int(cfg["settings"].get("max_snapshots", 5))
     pdf_path   = resolve_pdf_path(pid, email)
+    pdf_slug   = pdf_filename_slug(pdf_path.name) if pdf_path else "drawing"
     snaps_dir  = proj_snapshots_dir(pid, email)
     if not st.session_state.get(f"t4_synced_{pid}"):
         sync_snapshots_from_supabase(pid, email, snaps_dir)
@@ -90,7 +92,7 @@ def render_tab_crop(email: str):
     # ── Pre-compute RFI state (needed by both columns) ────────────────────────
     rfi_labels = [
         f"RFI-{get_rfi_num(r):03d}  ·  Sheet {r.get('sheets','?')}  "
-        f"[{_local_snap_count(snaps_dir, get_rfi_num(r), max_snaps)}/{max_snaps} snaps]"
+        f"[{_local_snap_count(snaps_dir, get_rfi_num(r), max_snaps, pdf_slug)}/{max_snaps} snaps]"
         for r in approved
     ]
     idx         = min(st.session_state.get("crop_rfi_idx", 0), len(approved) - 1)
@@ -109,9 +111,9 @@ def render_tab_crop(email: str):
                 _target_page = _sp
                 break
 
-    saved_snaps = _local_snaps(snaps_dir, rfi_num, max_snaps)
-    snap_slot   = _local_next_snap(snaps_dir, rfi_num, max_snaps)
-    snap_name   = f"RFI_{rfi_num:03d}_snap{snap_slot}.png" if snap_slot else None
+    saved_snaps = _local_snaps(snaps_dir, rfi_num, max_snaps, pdf_slug)
+    snap_slot   = _local_next_snap(snaps_dir, rfi_num, max_snaps, pdf_slug)
+    snap_name   = f"RFI_{rfi_num:03d}_{pdf_slug}_snap{snap_slot}.png" if snap_slot else None
 
     # ── Two-column layout from the top ────────────────────────────────────────
     left_col, right_col = st.columns([5, 5])
@@ -152,7 +154,7 @@ def render_tab_crop(email: str):
         # ── Page header ───────────────────────────────────────────────────────
         total_snaps_done = sum(
             1 for r in approved
-            if _local_snap_count(snaps_dir, get_rfi_num(r), max_snaps) > 0
+            if _local_snap_count(snaps_dir, get_rfi_num(r), max_snaps, pdf_slug) > 0
         )
         _hdr_l, _hdr_r = st.columns([3, 1])
         with _hdr_l:
@@ -390,7 +392,7 @@ def render_tab_crop(email: str):
         # ── Overall progress ──────────────────────────────────────────────────
         total_with_snaps = sum(
             1 for r in approved
-            if _local_snap_count(snaps_dir, get_rfi_num(r), max_snaps) > 0
+            if _local_snap_count(snaps_dir, get_rfi_num(r), max_snaps, pdf_slug) > 0
         )
         if total_with_snaps >= len(approved):
             st.markdown("---")
