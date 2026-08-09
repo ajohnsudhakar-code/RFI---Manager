@@ -21,6 +21,15 @@ from data_layer import (
 )
 from generate_rfi import generate_rfi_document
 
+
+def _default_kwarg(key: str, param: str, value):
+    """Only pass a widget default (value=/index=) when its key isn't
+    already in session state — avoids Streamlit's 'default value but also
+    set via Session State API' warning once a stored record (Edit button,
+    or the existing AI-scan prefill) has pre-populated the key."""
+    return {} if key in st.session_state else {param: value}
+
+
 # ── Local snap helpers ────────────────────────────────────────────────────────
 
 def _local_snaps(snaps_dir: Path, rfi_num: int, max_snaps: int) -> list:
@@ -132,6 +141,8 @@ def render_tab_generate(email: str):
         if st.button("+ New Manual RFI", key=f"t5_lp_new_{pid}",
                      type="primary", use_container_width=True):
             st.session_state[f"t5_selected_rfi_{pid}"] = "new"
+            st.session_state[f"t5_new_saved_{pid}"] = False
+            st.session_state.pop(f"t5_new_record_{pid}", None)
             st.rerun()
 
         _lp_cards_shown = 0
@@ -168,6 +179,8 @@ def render_tab_generate(email: str):
             if st.button("→ Create RFI", key=f"t5_lp_ai_{_lp_rfi_n}_{pid}",
                          use_container_width=True):
                 st.session_state[f"t5_selected_rfi_{pid}"] = _lp_rfi_n
+                st.session_state[f"t5_new_saved_{pid}"] = False
+                st.session_state.pop(f"t5_new_record_{pid}", None)
                 if st.session_state.get(f"t5_new_prefilled_rfi_{pid}") != _lp_rfi_n:
                     _PRIORITY_OPTS_T5 = ["Normal", "Critical", "High", "Low"]
                     _CATEGORY_OPTS_T5 = [
@@ -227,8 +240,9 @@ def render_tab_generate(email: str):
                 unsafe_allow_html=True)
         else:
             # ── Edit / View mode ──────────────────────────────────────────────
+            _rec = st.session_state.get(f"t5_new_record_{pid}", {})
             _is_saved    = st.session_state.get(f"t5_new_saved_{pid}", False)
-            _has_content = bool(st.session_state.get(f"t5_new_subject_{pid}", "").strip())
+            _has_content = bool(_rec.get("subject", "").strip())
             _gen_disabled = not bool(clients)
 
             _pending_logs = st.session_state.pop(f"t5_gen_logs_pending_{pid}", None)
@@ -250,17 +264,17 @@ def render_tab_generate(email: str):
                     st.number_input(
                         "RFI Number",
                         min_value=1,
-                        value=_suggested_rfi_num,
                         step=1,
                         key=f"t5_new_rfi_num_{pid}",
                         help="Auto-suggested — edit if needed",
+                        **_default_kwarg(f"t5_new_rfi_num_{pid}", "value", _suggested_rfi_num),
                     )
                 with _id2:
                     st.selectbox(
                         "Priority",
                         ["Normal", "Critical", "High", "Low"],
-                        index=0,
                         key=f"t5_new_priority_{pid}",
+                        **_default_kwarg(f"t5_new_priority_{pid}", "index", 0),
                     )
                 with _id3:
                     st.selectbox(
@@ -275,8 +289,8 @@ def render_tab_generate(email: str):
                             "Architectural Concern",
                             "Services Conflict",
                         ],
-                        index=0,
                         key=f"t5_new_category_{pid}",
+                        **_default_kwarg(f"t5_new_category_{pid}", "index", 0),
                     )
 
                 # ── SECTION 2 — RFI Content ───────────────────────────────────
@@ -358,8 +372,8 @@ def render_tab_generate(email: str):
                     )
                 st.date_input(
                     "Response Required By",
-                    value=date.today() + timedelta(days=14),
                     key=f"t5_new_rbd_{pid}",
+                    **_default_kwarg(f"t5_new_rbd_{pid}", "value", date.today() + timedelta(days=14)),
                 )
 
                 if clients:
@@ -367,8 +381,8 @@ def render_tab_generate(email: str):
                         "Send to",
                         range(len(clients)),
                         format_func=lambda i: clients[i].get("company", "?"),
-                        index=0,
                         key=f"t5_new_client_idx_{pid}",
+                        **_default_kwarg(f"t5_new_client_idx_{pid}", "index", 0),
                     )
                 else:
                     st.warning("No recipients configured — add recipients in Project Setup first.")
@@ -534,13 +548,17 @@ def render_tab_generate(email: str):
                     unsafe_allow_html=True)
                 _ni1, _ni2, _ni3, _ni4 = st.columns(4)
                 with _ni1:
-                    st.radio("Cost Impact",     ["TBD", "Yes", "No"], index=0, key=f"t5_new_cost_{pid}")
+                    st.radio("Cost Impact",     ["TBD", "Yes", "No"], key=f"t5_new_cost_{pid}",
+                              **_default_kwarg(f"t5_new_cost_{pid}", "index", 0))
                 with _ni2:
-                    st.radio("Schedule Impact", ["TBD", "Yes", "No"], index=0, key=f"t5_new_schedule_{pid}")
+                    st.radio("Schedule Impact", ["TBD", "Yes", "No"], key=f"t5_new_schedule_{pid}",
+                              **_default_kwarg(f"t5_new_schedule_{pid}", "index", 0))
                 with _ni3:
-                    st.radio("Environmental",   ["TBD", "Yes", "No"], index=0, key=f"t5_new_env_{pid}")
+                    st.radio("Environmental",   ["TBD", "Yes", "No"], key=f"t5_new_env_{pid}",
+                              **_default_kwarg(f"t5_new_env_{pid}", "index", 0))
                 with _ni4:
-                    st.radio("Public Affairs",  ["TBD", "Yes", "No"], index=0, key=f"t5_new_pub_{pid}")
+                    st.radio("Public Affairs",  ["TBD", "Yes", "No"], key=f"t5_new_pub_{pid}",
+                              **_default_kwarg(f"t5_new_pub_{pid}", "index", 0))
 
                 # ── SECTION 5 — Attachments ───────────────────────────────────
                 st.markdown(
@@ -698,12 +716,29 @@ def render_tab_generate(email: str):
                                 "public_affairs_impact": st.session_state.get(f"t5_new_pub_{pid}", "TBD"),
                             }
                             upsert_project_register_rows(pid, [_new_issue], pcfg.get("name", ""), email)
+                            st.session_state[f"t5_new_record_{pid}"] = {
+                                "rfi_num":             _num,
+                                "priority":            st.session_state.get(f"t5_new_priority_{pid}", "Normal"),
+                                "category":            st.session_state.get(f"t5_new_category_{pid}", ""),
+                                "subject":             _subj,
+                                "question":            _qst,
+                                "sheets":              st.session_state.get(f"t5_new_sheets_{pid}", ""),
+                                "reference_doc":        st.session_state.get(f"t5_new_ref_doc_{pid}", ""),
+                                "response_required_by": st.session_state.get(f"t5_new_rbd_{pid}"),
+                                "client_idx":          st.session_state.get(f"t5_new_client_idx_{pid}", 0),
+                                "instructions":        st.session_state.get(f"t5_new_instructions_{pid}", ""),
+                                "note":                st.session_state.get(f"t5_new_note_{pid}", ""),
+                                "cost":                st.session_state.get(f"t5_new_cost_{pid}", "TBD"),
+                                "schedule":            st.session_state.get(f"t5_new_schedule_{pid}", "TBD"),
+                                "env":                 st.session_state.get(f"t5_new_env_{pid}", "TBD"),
+                                "pub":                 st.session_state.get(f"t5_new_pub_{pid}", "TBD"),
+                            }
                             st.session_state[f"t5_new_saved_{pid}"] = True
                             st.rerun()
 
             else:
                 # ─── VIEW MODE ────────────────────────────────────────────────
-                _rfi_num = int(st.session_state.get(f"t5_new_rfi_num_{pid}", 1))
+                _rfi_num = int(_rec.get("rfi_num", 1))
                 st.markdown(
                     f'<div style="background:#f0fdf4;border:1px solid #bbf7d0;'
                     f'border-radius:8px;padding:16px 20px;margin-bottom:16px;">'
@@ -740,23 +775,23 @@ def render_tab_generate(email: str):
                 with _vi1:
                     _ro("RFI Number", str(_rfi_num))
                 with _vi2:
-                    _ro("Priority", st.session_state.get(f"t5_new_priority_{pid}", "Normal"))
+                    _ro("Priority", _rec.get("priority", "Normal"))
                 with _vi3:
-                    _ro("Category", st.session_state.get(f"t5_new_category_{pid}", ""))
-                _ro("Subject", st.session_state.get(f"t5_new_subject_{pid}", ""))
+                    _ro("Category", _rec.get("category", ""))
+                _ro("Subject", _rec.get("subject", ""))
 
                 # Section: Question
                 st.markdown('<div class="sec-lbl" style="margin-top:12px;">Question</div>',
                             unsafe_allow_html=True)
-                _ro("Question", st.session_state.get(f"t5_new_question_{pid}", ""))
+                _ro("Question", _rec.get("question", ""))
                 _vq1, _vq2 = st.columns(2)
                 with _vq1:
-                    _ro("Drawing Reference", st.session_state.get(f"t5_new_sheets_{pid}", ""))
+                    _ro("Drawing Reference", _rec.get("sheets", ""))
                 with _vq2:
-                    _ro("Reference Document No.", st.session_state.get(f"t5_new_ref_doc_{pid}", ""))
+                    _ro("Reference Document No.", _rec.get("reference_doc", ""))
                 _vq3, _vq4 = st.columns(2)
                 with _vq3:
-                    _rbd_val = str(st.session_state.get(f"t5_new_rbd_{pid}", "") or "")
+                    _rbd_val = str(_rec.get("response_required_by", "") or "")
                     if _rbd_val:
                         st.markdown(
                             f'<div style="font-size:11px;color:#6b7280;">Response Required By</div>'
@@ -765,7 +800,7 @@ def render_tab_generate(email: str):
                     else:
                         _ro("Response Required By", "")
                 with _vq4:
-                    _ci_v = st.session_state.get(f"t5_new_client_idx_{pid}", 0)
+                    _ci_v = _rec.get("client_idx", 0)
                     if not isinstance(_ci_v, int) or _ci_v < 0 or _ci_v >= len(clients):
                         _ci_v = 0
                     _send_to = clients[_ci_v].get("company", "—") if clients else "—"
@@ -776,10 +811,10 @@ def render_tab_generate(email: str):
                             unsafe_allow_html=True)
                 _vin1, _vin2 = st.columns(2)
                 with _vin1:
-                    _ro("Instructions", st.session_state.get(f"t5_new_instructions_{pid}", ""),
+                    _ro("Instructions", _rec.get("instructions", ""),
                         _gray_if_empty=True)
                 with _vin2:
-                    _ro("Note", st.session_state.get(f"t5_new_note_{pid}", ""),
+                    _ro("Note", _rec.get("note", ""),
                         _gray_if_empty=True)
 
                 # Section: Impact Assessment
@@ -787,13 +822,13 @@ def render_tab_generate(email: str):
                             unsafe_allow_html=True)
                 _vim1, _vim2, _vim3, _vim4 = st.columns(4)
                 with _vim1:
-                    _ro("Cost Impact",     st.session_state.get(f"t5_new_cost_{pid}", "TBD"))
+                    _ro("Cost Impact",     _rec.get("cost", "TBD"))
                 with _vim2:
-                    _ro("Schedule Impact", st.session_state.get(f"t5_new_schedule_{pid}", "TBD"))
+                    _ro("Schedule Impact", _rec.get("schedule", "TBD"))
                 with _vim3:
-                    _ro("Environmental",   st.session_state.get(f"t5_new_env_{pid}", "TBD"))
+                    _ro("Environmental",   _rec.get("env", "TBD"))
                 with _vim4:
-                    _ro("Public Affairs",  st.session_state.get(f"t5_new_pub_{pid}", "TBD"))
+                    _ro("Public Affairs",  _rec.get("pub", "TBD"))
 
                 # Section: Attachments
                 st.markdown('<div class="sec-lbl" style="margin-top:12px;">Attachments</div>',
@@ -828,17 +863,62 @@ def render_tab_generate(email: str):
                     )
 
                 if _view_edit:
+                    _PRIORITY_OPTS_EDIT = ["Normal", "Critical", "High", "Low"]
+                    _CATEGORY_OPTS_EDIT = [
+                        "Missing Information", "Conflict Between Sheets",
+                        "Coordination Issue", "Ambiguous Detail",
+                        "Specification Conflict", "Structural Concern",
+                        "Architectural Concern", "Services Conflict",
+                    ]
+                    _IMPACT_OPTS_EDIT = ["TBD", "Yes", "No"]
+
+                    st.session_state[f"t5_new_rfi_num_{pid}"] = int(_rec.get("rfi_num", _suggested_rfi_num))
+
+                    _edit_priority = _rec.get("priority", "Normal")
+                    st.session_state[f"t5_new_priority_{pid}"] = (
+                        _edit_priority if _edit_priority in _PRIORITY_OPTS_EDIT else "Normal"
+                    )
+                    _edit_category = _rec.get("category", "")
+                    st.session_state[f"t5_new_category_{pid}"] = (
+                        _edit_category if _edit_category in _CATEGORY_OPTS_EDIT else _CATEGORY_OPTS_EDIT[0]
+                    )
+                    st.session_state[f"t5_new_subject_{pid}"]  = _rec.get("subject", "")
+                    st.session_state[f"t5_new_question_{pid}"] = _rec.get("question", "")
+                    st.session_state[f"t5_new_sheets_{pid}"]   = _rec.get("sheets", "")
+                    st.session_state[f"t5_new_ref_doc_{pid}"]  = _rec.get("reference_doc", "")
+                    st.session_state[f"t5_new_rbd_{pid}"] = (
+                        _rec.get("response_required_by") or (date.today() + timedelta(days=14))
+                    )
+
+                    _edit_ci = _rec.get("client_idx", 0)
+                    if not isinstance(_edit_ci, int) or _edit_ci < 0 or _edit_ci >= len(clients):
+                        _edit_ci = 0
+                    if clients:
+                        st.session_state[f"t5_new_client_idx_{pid}"] = _edit_ci
+
+                    st.session_state[f"t5_new_instructions_{pid}"] = _rec.get("instructions", "")
+                    st.session_state[f"t5_new_note_{pid}"]         = _rec.get("note", "")
+
+                    for _fld, _wkey in (
+                        ("cost", f"t5_new_cost_{pid}"),
+                        ("schedule", f"t5_new_schedule_{pid}"),
+                        ("env", f"t5_new_env_{pid}"),
+                        ("pub", f"t5_new_pub_{pid}"),
+                    ):
+                        _edit_v = _rec.get(_fld, "TBD")
+                        st.session_state[_wkey] = _edit_v if _edit_v in _IMPACT_OPTS_EDIT else "TBD"
+
                     st.session_state[f"t5_new_saved_{pid}"] = False
                     st.rerun()
 
                 if _view_gen:
-                    _subj = st.session_state.get(f"t5_new_subject_{pid}", "").strip()
-                    _qst  = st.session_state.get(f"t5_new_question_{pid}", "").strip()
+                    _subj = _rec.get("subject", "").strip()
+                    _qst  = _rec.get("question", "").strip()
                     if not _subj or not _qst:
                         st.error("Subject and Question are both required.")
                     else:
                         _up_files = st.session_state.get(f"t5_new_uploads_{pid}_{_reset_ctr}") or []
-                        _num = int(st.session_state.get(f"t5_new_rfi_num_{pid}", _suggested_rfi_num))
+                        _num = int(_rec.get("rfi_num", _suggested_rfi_num))
                         for _fi, _uf in enumerate(_up_files[:5], start=1):
                             _fname = f"RFI_{_num:03d}_upload_snap{_fi}.png"
                             _fdata = _uf.read()
@@ -851,18 +931,18 @@ def render_tab_generate(email: str):
                             "rfi_number":            _num,
                             "description":           _subj,
                             "question":              _qst,
-                            "sheets":                st.session_state.get(f"t5_new_sheets_{pid}", ""),
-                            "reference_doc":         st.session_state.get(f"t5_new_ref_doc_{pid}", ""),
-                            "response_required_by":  str(st.session_state.get(f"t5_new_rbd_{pid}", "")),
-                            "priority":              st.session_state.get(f"t5_new_priority_{pid}", "Normal"),
-                            "category":              st.session_state.get(f"t5_new_category_{pid}", ""),
-                            "cost_impact":           st.session_state.get(f"t5_new_cost_{pid}", "TBD"),
-                            "schedule_impact":       st.session_state.get(f"t5_new_schedule_{pid}", "TBD"),
-                            "environmental_impact":  st.session_state.get(f"t5_new_env_{pid}", "TBD"),
-                            "public_affairs_impact": st.session_state.get(f"t5_new_pub_{pid}", "TBD"),
+                            "sheets":                _rec.get("sheets", ""),
+                            "reference_doc":         _rec.get("reference_doc", ""),
+                            "response_required_by":  str(_rec.get("response_required_by", "")),
+                            "priority":              _rec.get("priority", "Normal"),
+                            "category":              _rec.get("category", ""),
+                            "cost_impact":           _rec.get("cost", "TBD"),
+                            "schedule_impact":       _rec.get("schedule", "TBD"),
+                            "environmental_impact":  _rec.get("env", "TBD"),
+                            "public_affairs_impact": _rec.get("pub", "TBD"),
                         }
 
-                        _ci = st.session_state.get(f"t5_new_client_idx_{pid}", 0)
+                        _ci = _rec.get("client_idx", 0)
                         if not isinstance(_ci, int) or _ci < 0 or _ci >= len(clients):
                             _ci = 0
                         _new_sel_client = clients[_ci]
@@ -917,8 +997,8 @@ def render_tab_generate(email: str):
                             },
                             "settings":         cfg.get("settings", {"max_snapshots": 5}),
                             "approved_rfis":    [_new_issue],
-                            "instructions_text":   st.session_state.get(f"t5_new_instructions_{pid}", ""),
-                            "superintendent_text": st.session_state.get(f"t5_new_note_{pid}", ""),
+                            "instructions_text":   _rec.get("instructions", ""),
+                            "superintendent_text": _rec.get("note", ""),
                         }
 
                         with st.spinner("Building Word document…"):
@@ -942,6 +1022,7 @@ def render_tab_generate(email: str):
                                 if _gen_logs:
                                     st.session_state[f"t5_gen_logs_pending_{pid}"] = _gen_logs
                                 st.session_state[f"t5_selected_rfi_{pid}"] = None
+                                st.session_state.pop(f"t5_new_record_{pid}", None)
                                 st.session_state.pop(f"t5_new_subject_{pid}", None)
                                 st.rerun()
                             else:

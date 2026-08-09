@@ -1109,6 +1109,7 @@ with st.sidebar:
                         st.session_state.pop(_rk, None)
                 st.session_state.pop("_sb_labels", None)
                 st.session_state.pop("_sb_label_pids", None)
+
                 st.rerun()
 
         if st.button("＋ New Project", key="sb_new_proj_btn", use_container_width=True):
