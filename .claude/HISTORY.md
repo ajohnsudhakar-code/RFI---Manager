@@ -563,3 +563,65 @@ rfi_register. View mode shows read-only summary with Generate
 and Edit buttons. Generate closes form and returns to placeholder.
 Session state key: t5_new_saved_{pid}
 File: ui_generate.py
+
+---
+
+## Tab 5 Fixes — Session 3 (9 August 2026)
+
+**Bug — Generate Word Document did nothing** ✅ RESOLVED
+ui_generate.py: In Tab 5, Save worked and View Mode rendered correctly with
+the Generate button live. Clicking Generate returned a blank Edit form asking
+to Save again — no document was written locally or to Supabase Storage, no
+error appeared on screen, and nothing was written to error_log.txt. Edit
+failed identically. Regressed since May 2026.
+
+Root cause — NOT a project-switch problem. View Mode renders zero input
+widgets. Streamlit garbage-collects a keyed widget's session-state value once
+a script run completes without that widget being instantiated. Every field
+was being read back for View Mode, Edit repopulation, and the Generate config
+directly from those transient widget keys. One View Mode render was enough to
+lose them. On the next run `_has_content` evaluated False, the branch fell
+back to EDIT, and the Generate handler — which sits entirely inside the View
+Mode branch — was never reached. No exception was raised, hence nothing on
+screen and nothing in the log.
+
+Regression source — Bug #38 (commit bffa4ea, 20 May 2026) introduced the
+Save/View/Edit split. Before it, the Generate button rendered in the same
+pass as the form widgets, so they were never garbage-collected. Correction to
+the record: Bug #38's entry above claims the pattern matched Tab 1 and Tab 2.
+It did not — neither tab has a view/edit split; both keep the form rendered
+permanently. This correction is noted here; Bug #38's entry itself is left
+unedited.
+
+Ruled out — the sidebar project-switch clear block in app.py was suspected
+and exonerated: WILL_FIRE=False across 67 measured runs in two live probe
+sessions. The project id list is deterministically ordered — `.order("project_id")`
+in `_list_project_ids`, `sorted()` on the local fallback — so the misfire
+theory did not hold. app.py's clear block was left unchanged.
+
+Fix — A single non-widget session key `t5_new_record_{pid}` now holds the
+full saved RFI — 15 fields including `client_idx`, instructions, and note,
+three fields previously captured nowhere durable. The branch condition, View
+Mode display, Edit repopulation, and the Generate handler's config all read
+from it. Both entry handlers ("+ New Manual RFI" and "→ Create RFI") reset
+the saved flag and clear the record so a stale RFI cannot leak into a new
+one. A `_default_kwarg` helper suppresses Streamlit's "default value but also
+set via Session State API" warning on the 8 widgets that Edit repopulation
+writes ahead of instantiation. The recipient bounds check against the live
+clients list was preserved.
+
+Verified — Probe run #10: subject key exists=False, record_exists=True,
+has_content=True, BRANCH=VIEW. Generate, Edit, and both entry handlers all
+tested. RFI-012, 013 and 014 generated successfully; RFI-014 contained none
+of RFI-013's data.
+
+Method note worth recording — an uncommitted `st.stop()` diagnostic block
+from an earlier debugging pass was found sitting between the document build
+and the success handling. Its silence during testing is what broke the case
+open — if the Generate handler had been running, its `st.warning` would have
+been on screen. Lesson: never leave diagnostics in the working tree
+uncommitted.
+
+Committed as 563f2e9. Temporary probe instrumentation added to diagnose this
+has been removed.
+File: ui_generate.py
