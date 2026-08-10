@@ -305,6 +305,7 @@ def generate_rfi_document(config: dict) -> dict:
         COMPANY_NAME     = _co.get("name", _co.get("company_name", _co.get("company", "")))
         COMPANY_WEB      = _co.get("website", _co.get("company_website", ""))
         COMPANY_ADDRESS  = _co.get("address", "")
+        COMPANY_CITY     = _co.get("city", "")
         COMPANY_COUNTRY  = _co.get("country", "")
         COMPANY_POSTCODE = _co.get("postcode", "")
 
@@ -460,15 +461,9 @@ def generate_rfi_document(config: dict) -> dict:
             _cn_r = _cn_p.add_run(COMPANY_NAME)
             _cn_r.bold = True; _cn_r.font.size = Pt(12); _cn_r.font.color.rgb = C_BLUE
 
-            _addr_parts = [p for p in [COMPANY_ADDRESS, COMPANY_COUNTRY, COMPANY_POSTCODE] if p]
-            if len(_addr_parts) >= 3:
-                _addr_str = f"{_addr_parts[0]}, {_addr_parts[1]} {_addr_parts[2]}"
-            elif len(_addr_parts) == 2:
-                _addr_str = f"{_addr_parts[0]}, {_addr_parts[1]}"
-            elif len(_addr_parts) == 1:
-                _addr_str = _addr_parts[0]
-            else:
-                _addr_str = ""
+            _city_postcode = " ".join(p for p in [COMPANY_CITY, COMPANY_POSTCODE] if p)
+            _addr_parts = [p for p in [COMPANY_ADDRESS, _city_postcode, COMPANY_COUNTRY] if p]
+            _addr_str = ", ".join(_addr_parts)
             _addr_p = t_hdr_lc.add_paragraph()
             _addr_p.paragraph_format.space_before = Pt(0)
             _addr_p.paragraph_format.space_after  = Pt(0)
