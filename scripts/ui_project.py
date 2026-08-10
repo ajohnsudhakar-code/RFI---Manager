@@ -3,6 +3,7 @@ ui_project.py — Tab 2: Project Setup
 """
 import streamlit as st
 from pathlib import Path
+from uuid import uuid4
 
 from data_layer import (
     proj_dir,
@@ -28,7 +29,26 @@ def _drawings_dir(pid: str, email: str = "") -> Path:
 
 
 def _blank_client() -> dict:
-    return {"company": "", "attn": "", "email": "", "phone": "", "role": ""}
+    return {"id": uuid4().hex, "company": "", "attn": "", "email": "", "phone": "", "role": ""}
+
+
+def _client_cid(client: dict, idx: int) -> str:
+    return client.get("id") or f"pos{idx}"
+
+
+def _client_initials(company: str) -> str:
+    words = company.split()
+    if len(words) >= 2:
+        return (words[0][0] + words[1][0]).upper()
+    if words:
+        return words[0][:2].upper()
+    return "—"
+
+
+def _backfill_client_ids(clients: list) -> None:
+    for c in clients:
+        if not c.get("id"):
+            c["id"] = uuid4().hex
 
 
 def _client_form(prefix: str, defaults: dict | None = None) -> dict | None:
@@ -58,6 +78,7 @@ def _client_form(prefix: str, defaults: dict | None = None) -> dict | None:
             st.error("Company Name is required.")
             return None
         return {
+            "id":      d.get("id", ""),
             "company": company.strip(),
             "attn":    attn.strip(),
             "email":   email.strip(),
@@ -144,6 +165,12 @@ def render_tab_project(email: str):
         '.st-key-pr_scope [data-testid="stFileUploaderDropzoneInstructions"] { display:none !important; }'
         '.st-key-pr_scope [data-testid="stFileUploaderDropzone"] { '
         'padding:6px !important; min-height:0 !important; }'
+        '.st-key-t2_add_client_btn button { '
+        'padding:4px 10px !important; font-size:12px !important; }'
+        '.st-key-pr_scope [data-testid="column"]:has(.st-key-t2_add_client_btn) { '
+        'display:flex !important; justify-content:flex-end !important; align-items:center !important; }'
+        '[class*="st-key-t2_rcpt_edit_"] button, [class*="st-key-t2_rcpt_del_"] button { '
+        'padding:4px 10px !important; }'
         '</style>',
         unsafe_allow_html=True)
 
@@ -221,9 +248,9 @@ def render_tab_project(email: str):
                     doc = _fitz.open(str(dest))
                     pc  = len(doc)
                     doc.close()
-                    st.success(f"✓ Uploaded **{up_pdf.name}** ({pc} pages) — click Save to confirm.")
+                    st.success(f"✓ {pc} page{'s' if pc != 1 else ''} uploaded — click Save to confirm.")
                 except Exception:
-                    st.success(f"✓ Uploaded **{up_pdf.name}** — click Save to confirm.")
+                    st.success("✓ Uploaded — click Save to confirm.")
 
         pdf_files = sorted(drawings.glob("*.pdf"))
         _is_new_proj = st.session_state.get("_pid_is_new_unsaved", False)
@@ -327,13 +354,13 @@ def render_tab_project(email: str):
             )
         else:
             clients = load_project_clients(pid, email)
-            form_mode = st.session_state.get("t2_client_form_mode")  # None | ("new",) | ("edit", idx)
-            _ch_l, _ch_r = st.columns([5, 1])
+            form_mode = st.session_state.get("t2_client_form_mode")  # None | ("new",) | ("edit", cid)
+            _ch_l, _ch_r = st.columns([4, 1])
             with _ch_l:
                 st.markdown('<div class="pr-hdr">Recipients</div>', unsafe_allow_html=True)
             with _ch_r:
                 if not form_mode or form_mode[0] == "edit":
-                    if st.button("＋ Add Recipient", key="t2_add_client_btn", type="primary"):
+                    if st.button("+ Add", key="t2_add_client_btn", type="secondary"):
                         st.session_state["t2_client_form_mode"] = ("new",)
                         st.rerun()
             st.markdown(
@@ -356,28 +383,18 @@ def render_tab_project(email: str):
                     unsafe_allow_html=True,
                 )
             else:
-                if clients:
-                    st.markdown(
-                        '<div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 2fr 1.2fr 0.8fr;'
-                        'background:#fafafa;border-bottom:1px solid #f0f0f0;padding:8px 20px;">'
-                        '<span style="font-size:10.5px;color:#9ca3af;font-weight:700;text-transform:uppercase;">Company</span>'
-                        '<span style="font-size:10.5px;color:#9ca3af;font-weight:700;text-transform:uppercase;">Contact</span>'
-                        '<span style="font-size:10.5px;color:#9ca3af;font-weight:700;text-transform:uppercase;">Role</span>'
-                        '<span style="font-size:10.5px;color:#9ca3af;font-weight:700;text-transform:uppercase;">Email</span>'
-                        '<span style="font-size:10.5px;color:#9ca3af;font-weight:700;text-transform:uppercase;">Phone</span>'
-                        '<span style="font-size:10.5px;color:#9ca3af;font-weight:700;text-transform:uppercase;">Actions</span>'
-                        '</div>',
-                        unsafe_allow_html=True)
                 for i, client in enumerate(clients):
-                    if form_mode and form_mode[0] == "edit" and form_mode[1] == i:
+                    cid = _client_cid(client, i)
+                    if form_mode and form_mode[0] == "edit" and form_mode[1] == cid:
                         st.markdown(f"**Edit recipient: {client.get('company','')}**")
-                        result = _client_form(prefix=f"edit_{i}", defaults=client)
+                        result = _client_form(prefix=f"edit_{cid}", defaults=client)
                         if result == "cancel":
                             st.session_state.pop("t2_client_form_mode", None)
                             st.rerun()
                         elif result is not None:
                             clients[i] = result
                             try:
+                                _backfill_client_ids(clients)
                                 save_project_clients(pid, clients, email)
                                 st.session_state.pop("t2_client_form_mode", None)
                                 st.session_state["_client_saved_ok"] = f"✓ Updated **{result['company']}**."
@@ -391,53 +408,71 @@ def render_tab_project(email: str):
                         _ro = client.get("role", "")
                         _em = client.get("email", "")
                         _ph = client.get("phone", "")
-                        _role_html = (
-                            f'<span style="background:#f0f4ff;color:#3b5bdb;font-size:11px;'
-                            f'padding:2px 8px;border-radius:10px;">{_ro}</span>' if _ro else "—")
-                        _em_html = f'<span style="color:#1d4ed8;">{_em}</span>' if _em else "—"
-                        _rd, _re, _rdl = st.columns([10, 1, 1])
+                        _initials = _client_initials(_co)
+                        _line1 = _co
+                        if _ro:
+                            _line1 += f' <span style="color:#9ca3af;font-weight:400;">— {_ro}</span>'
+                        _line2_parts = [p for p in (_at, _em, _ph) if p]
+                        _line2 = " · ".join(_line2_parts) or "—"
+                        _rav, _rd, _re, _rdl = st.columns([1, 8, 1.2, 1.2])
+                        with _rav:
+                            st.markdown(
+                                f'<div style="width:32px;height:32px;border-radius:50%;'
+                                f'background:#eef2ff;color:#3b5bdb;font-size:12px;font-weight:700;'
+                                f'display:flex;align-items:center;justify-content:center;">'
+                                f'{_initials}</div>',
+                                unsafe_allow_html=True)
                         with _rd:
                             st.markdown(
-                                f'<div style="display:grid;grid-template-columns:2fr 1.5fr 1fr 2fr 1.2fr;'
-                                f'padding:10px 20px;border-bottom:1px solid #f7f7f7;align-items:center;">'
-                                f'<span style="font-size:13px;color:#111;font-weight:500;">{_co}</span>'
-                                f'<span style="font-size:13px;color:#374151;">{_at or "—"}</span>'
-                                f'{_role_html}'
-                                f'{_em_html}'
-                                f'<span style="font-size:13px;color:#374151;">{_ph or "—"}</span>'
+                                f'<div style="min-width:0;padding:2px 0;">'
+                                f'<div style="font-size:13px;color:#111;font-weight:500;'
+                                f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{_line1}</div>'
+                                f'<div style="font-size:12px;color:#6b7280;margin-top:1px;'
+                                f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{_line2}</div>'
                                 f'</div>',
                                 unsafe_allow_html=True)
                         with _re:
-                            if st.button("Edit", key=f"t2_edit_{i}_{pid}", use_container_width=True):
-                                st.session_state["t2_client_form_mode"] = ("edit", i)
+                            if st.button("✎", key=f"t2_rcpt_edit_{cid}_{pid}"):
+                                st.session_state["t2_client_form_mode"] = ("edit", cid)
                                 st.rerun()
                         with _rdl:
-                            if st.button("Del", key=f"t2_del_{i}_{pid}", use_container_width=True):
-                                st.session_state["t2_confirm_del_client"] = i
+                            if st.button("✗", key=f"t2_rcpt_del_{cid}_{pid}"):
+                                st.session_state["t2_confirm_del_client"] = cid
                                 st.rerun()
+                        st.markdown(
+                            '<div style="border-bottom:1px solid #f7f7f7;margin:4px 0 8px;"></div>',
+                            unsafe_allow_html=True)
 
-            _pending_del_idx = st.session_state.get("t2_confirm_del_client")
-            if _pending_del_idx is not None and 0 <= _pending_del_idx < len(clients):
-                _del_company = clients[_pending_del_idx].get("company", "this recipient")
-                st.warning(f"Delete **{_del_company}**? This cannot be undone.")
-                _dcc1, _dcc2, _ = st.columns([1, 1, 4])
-                with _dcc1:
-                    if st.button("✓ Yes, Delete", key="t2_del_client_confirm", type="primary",
-                                 use_container_width=True):
-                        _clients_fresh = load_project_clients(pid, email)
-                        _clients_fresh.pop(_pending_del_idx)
-                        try:
-                            save_project_clients(pid, _clients_fresh, email)
-                            st.session_state.pop("t2_client_form_mode", None)
-                            st.session_state["_client_deleted_ok"] = f"Deleted **{_del_company}**."
-                        except Exception as _del_err:
-                            st.session_state["_client_delete_err"] = f"❌ Could not delete recipient: {_del_err}"
-                        st.session_state.pop("t2_confirm_del_client", None)
-                        st.rerun()
-                with _dcc2:
-                    if st.button("✕ Cancel", key="t2_del_client_cancel", use_container_width=True):
-                        st.session_state.pop("t2_confirm_del_client", None)
-                        st.rerun()
+            _pending_del_cid = st.session_state.get("t2_confirm_del_client")
+            if _pending_del_cid is not None:
+                _pending_del_idx = next(
+                    (i for i, c in enumerate(clients) if _client_cid(c, i) == _pending_del_cid), None)
+                if _pending_del_idx is not None:
+                    _del_company = clients[_pending_del_idx].get("company", "this recipient")
+                    st.warning(f"Delete **{_del_company}**? This cannot be undone.")
+                    _dcc1, _dcc2, _ = st.columns([1, 1, 4])
+                    with _dcc1:
+                        if st.button("✓ Yes, Delete", key="t2_del_client_confirm", type="primary",
+                                     use_container_width=True):
+                            _clients_fresh = load_project_clients(pid, email)
+                            _fresh_idx = next(
+                                (i for i, c in enumerate(_clients_fresh)
+                                 if _client_cid(c, i) == _pending_del_cid), None)
+                            if _fresh_idx is not None:
+                                _clients_fresh.pop(_fresh_idx)
+                            try:
+                                _backfill_client_ids(_clients_fresh)
+                                save_project_clients(pid, _clients_fresh, email)
+                                st.session_state.pop("t2_client_form_mode", None)
+                                st.session_state["_client_deleted_ok"] = f"Deleted **{_del_company}**."
+                            except Exception as _del_err:
+                                st.session_state["_client_delete_err"] = f"❌ Could not delete recipient: {_del_err}"
+                            st.session_state.pop("t2_confirm_del_client", None)
+                            st.rerun()
+                    with _dcc2:
+                        if st.button("✕ Cancel", key="t2_del_client_cancel", use_container_width=True):
+                            st.session_state.pop("t2_confirm_del_client", None)
+                            st.rerun()
 
             if form_mode and form_mode[0] == "new":
                 st.markdown("**New Recipient**")
@@ -449,6 +484,7 @@ def render_tab_project(email: str):
                     clients.append(result)
                     clients.sort(key=lambda c: c.get("company", "").lower())
                     try:
+                        _backfill_client_ids(clients)
                         save_project_clients(pid, clients, email)
                         st.session_state.pop("t2_client_form_mode", None)
                         st.session_state["_client_saved_ok"] = f"✓ Added **{result['company']}**."
