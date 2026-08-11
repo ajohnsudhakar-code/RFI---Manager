@@ -67,9 +67,9 @@ def _client_form(prefix: str, defaults: dict | None = None) -> dict | None:
             role  = st.text_input("Role",  value=d.get("role", ""))
             phone = st.text_input("Phone", value=d.get("phone", ""))
 
-        save_col, cancel_col, _ = st.columns([1, 1, 4])
-        submitted = save_col.form_submit_button("💾 Save Recipient",  type="primary")
-        cancelled = cancel_col.form_submit_button("✕ Cancel")
+        save_col, cancel_col, _ = st.columns([1, 1, 3])
+        submitted = save_col.form_submit_button("Save",  type="primary")
+        cancelled = cancel_col.form_submit_button("Cancel")
 
     if cancelled:
         return "cancel"
@@ -432,11 +432,11 @@ def render_tab_project(email: str):
                                 f'</div>',
                                 unsafe_allow_html=True)
                         with _re:
-                            if st.button("✎", key=f"t2_rcpt_edit_{cid}_{pid}"):
+                            if st.button("✏️", key=f"t2_rcpt_edit_{cid}_{pid}"):
                                 st.session_state["t2_client_form_mode"] = ("edit", cid)
                                 st.rerun()
                         with _rdl:
-                            if st.button("✗", key=f"t2_rcpt_del_{cid}_{pid}"):
+                            if st.button("🗑", key=f"t2_rcpt_del_{cid}_{pid}"):
                                 st.session_state["t2_confirm_del_client"] = cid
                                 st.rerun()
                         st.markdown(
@@ -450,9 +450,9 @@ def render_tab_project(email: str):
                 if _pending_del_idx is not None:
                     _del_company = clients[_pending_del_idx].get("company", "this recipient")
                     st.warning(f"Delete **{_del_company}**? This cannot be undone.")
-                    _dcc1, _dcc2, _ = st.columns([1, 1, 4])
+                    _dcc1, _dcc2, _ = st.columns([1, 1, 3])
                     with _dcc1:
-                        if st.button("✓ Yes, Delete", key="t2_del_client_confirm", type="primary",
+                        if st.button("Delete", key="t2_del_client_confirm", type="primary",
                                      use_container_width=True):
                             _clients_fresh = load_project_clients(pid, email)
                             _fresh_idx = next(
@@ -470,7 +470,7 @@ def render_tab_project(email: str):
                             st.session_state.pop("t2_confirm_del_client", None)
                             st.rerun()
                     with _dcc2:
-                        if st.button("✕ Cancel", key="t2_del_client_cancel", use_container_width=True):
+                        if st.button("Cancel", key="t2_del_client_cancel", use_container_width=True):
                             st.session_state.pop("t2_confirm_del_client", None)
                             st.rerun()
 
@@ -524,7 +524,7 @@ def render_tab_project(email: str):
                         st.rerun()
             else:
                 st.warning("Delete this project? This cannot be undone.")
-                _dc1, _dc2, _ = st.columns([2, 1, 3])
+                _dc1, _dc2, _ = st.columns([2, 1, 2])
                 with _dc1:
                     if st.button("✓ Yes, Delete", key="t2_del_proj_confirm", type="primary",
                                  use_container_width=True):
