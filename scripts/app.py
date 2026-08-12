@@ -1131,7 +1131,21 @@ with st.sidebar:
 # ══════════════════════════════════════════════════════════════════════════════
 #  TABS
 # ══════════════════════════════════════════════════════════════════════════════
-if st.session_state.pop("_goto_tab2", False):
+_pid_now = st.session_state.get("current_project_id", "")
+_t2_snapshot = {
+    k: v for k, v in st.session_state.items()
+    if k.startswith("t2_") and _pid_now and _pid_now in k
+}
+_fire_tab2 = st.session_state.pop("_goto_tab2", False)
+
+if st.session_state.get("_pid_is_new_unsaved"):
+    if _t2_snapshot != st.session_state.get("_t2_snapshot_prev"):
+        _fire_tab2 = True
+    st.session_state["_t2_snapshot_prev"] = _t2_snapshot
+else:
+    st.session_state.pop("_t2_snapshot_prev", None)
+
+if _fire_tab2:
     components.html(
         """<script>
 (function(){
