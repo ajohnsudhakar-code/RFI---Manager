@@ -83,6 +83,8 @@ All source files live in `scripts/`. Each file has ONE job — never put logic i
 
 ## 6 — SUPABASE CONFIGURATION
 
+- **Schema changes must update this section in the same session they are applied.** This has now
+  drifted twice — Bug #23 was the first time.
 - Project ID: `kflkrzxaaoceemcudqvb` / Region: `ap-southeast-1`
 - Site URL + Redirect URL: `https://rfi-manager.streamlit.app/`
 - Email Confirmation: ON (production) — must stay ON
@@ -90,8 +92,17 @@ All source files live in `scripts/`. Each file has ONE job — never put logic i
 - Reset email template: uses `token_hash` as query param (not hash fragment)
 - Tables: `user_config` / `projects` / `rfi_register` / `rfi_usage` / `user_sessions` / `usage_events` /
   `approved_rfis` (active — Tab 3 saves, Tab 5 reads) / `contacts` (UNUSED)
-- Extra columns: `projects.deleted_at`, `scan_results_data` (jsonb), `captions_data` (jsonb)
-  `rfi_register.priority` (text), `rfi_register.response_required_by` (date)
+- Full CREATE TABLE statements (kept in sync with live schema) live in the comment block at the
+  top of `scripts/app.py` — treat that as the source of truth for column-level detail.
+- Extra columns beyond the obvious: `projects.clients_data` / `approved_rfis_data` / `deleted_at` /
+  `scan_results_data` (jsonb) / `captions_data` (jsonb); `rfi_register.created_at`,
+  `priority` (text, default `'Normal'`), `response_required_by` (date), and nine RFI-detail columns —
+  `question`, `reference_doc`, `cost_impact`, `schedule_impact`, `environmental_impact`,
+  `public_affairs_impact`, `client_id`, `document_path` (all text), `document_generated_at`
+  (timestamptz) — added and live as of 2026-08-13; `rfi_usage.created_at`, `ai_scans_today`,
+  `ai_scans_date`; `approved_rfis.project_id`
+- `user_sessions` primary key is `id` (uuid) — `session_key` is UNIQUE, not the PK. Don't assume
+  otherwise from memory.
 - Buckets: `rfi-manager-files` (PDFs, Word docs, logo, sig) / `snapshots` (Tab 4 crops)
 - AI scan limits: FREE 3/day, PAID 20/day — stored in `rfi_usage.ai_scans_today` + `ai_scans_date`
 

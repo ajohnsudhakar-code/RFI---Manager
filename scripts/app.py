@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS approved_rfis (
   email text NOT NULL,
   session_id text,
   rfis_data jsonb,
-  created_at timestamptz DEFAULT now()
+  created_at timestamptz DEFAULT now(),
+  project_id text
 );
 
 -- rfi_register: one row per generated RFI
@@ -42,6 +43,18 @@ CREATE TABLE IF NOT EXISTS rfi_register (
   description text,
   status text DEFAULT 'Open',
   date_raised date DEFAULT current_date,
+  created_at timestamptz DEFAULT now(),
+  priority text DEFAULT 'Normal',
+  response_required_by date,
+  question text,
+  reference_doc text,
+  cost_impact text,
+  schedule_impact text,
+  environmental_impact text,
+  public_affairs_impact text,
+  client_id text,
+  document_path text,
+  document_generated_at timestamptz,
   UNIQUE (email, project_id, rfi_number)
 );
 
@@ -50,20 +63,47 @@ CREATE TABLE IF NOT EXISTS rfi_usage (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   email text UNIQUE NOT NULL,
   rfi_count int DEFAULT 0,
-  is_paid boolean DEFAULT false
+  is_paid boolean DEFAULT false,
+  created_at timestamptz DEFAULT now(),
+  ai_scans_today int DEFAULT 0,
+  ai_scans_date text DEFAULT ''
 );
 
 -- user_sessions: persistent login sessions keyed by UUID (?sid= in URL)
 CREATE TABLE IF NOT EXISTS user_sessions (
-  session_key text PRIMARY KEY,
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  session_key text UNIQUE NOT NULL,
   email text NOT NULL,
   access_token text NOT NULL,
   refresh_token text,
   expires_at bigint,
-  created_at bigint DEFAULT extract(epoch from now())::bigint,
-  last_used_at bigint DEFAULT extract(epoch from now())::bigint
+  created_at timestamptz DEFAULT now(),
+  last_used_at timestamptz DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS user_sessions_email_idx ON user_sessions (email);
+
+-- projects: one row per project (config, clients, approved RFIs, scans, captions)
+CREATE TABLE IF NOT EXISTS projects (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  email text NOT NULL,
+  project_id text NOT NULL,
+  config_data jsonb,
+  clients_data jsonb,
+  approved_rfis_data jsonb,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now(),
+  deleted_at timestamptz,
+  scan_results_data jsonb,
+  captions_data jsonb
+);
+
+-- usage_events: append-only event log for usage tracking
+CREATE TABLE IF NOT EXISTS usage_events (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  event text NOT NULL,
+  meta jsonb,
+  created_at timestamptz DEFAULT now()
+);
 
 -- Storage bucket (create in Supabase Dashboard → Storage):
 --   Bucket name: snapshots   (private)
