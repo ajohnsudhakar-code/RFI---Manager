@@ -99,7 +99,9 @@ All source files live in `scripts/`. Each file has ONE job — never put logic i
   `priority` (text, default `'Normal'`), `response_required_by` (date), and nine RFI-detail columns —
   `question`, `reference_doc`, `cost_impact`, `schedule_impact`, `environmental_impact`,
   `public_affairs_impact`, `client_id`, `document_path` (all text), `document_generated_at`
-  (timestamptz) — added and live as of 2026-08-13; `rfi_usage.created_at`, `ai_scans_today`,
+  (timestamptz) — added and live as of 2026-08-13; `rfi_register.instructions`,
+  `rfi_register.note` (both text, nullable, no default) — added and live as of 2026-08-13,
+  columns exist but nothing writes them yet; `rfi_usage.created_at`, `ai_scans_today`,
   `ai_scans_date`; `approved_rfis.project_id`
 - `user_sessions` primary key is `id` (uuid) — `session_key` is UNIQUE, not the PK. Don't assume
   otherwise from memory.

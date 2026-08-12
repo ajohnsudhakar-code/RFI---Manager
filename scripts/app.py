@@ -55,6 +55,8 @@ CREATE TABLE IF NOT EXISTS rfi_register (
   client_id text,
   document_path text,
   document_generated_at timestamptz,
+  instructions text,
+  note text,
   UNIQUE (email, project_id, rfi_number)
 );
 
