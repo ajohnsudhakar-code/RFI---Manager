@@ -111,8 +111,9 @@ def render_tab_analyse(email: str):
     with left_col:
         if not pdf_path:
             st.markdown(
-                '<div class="info-box">No drawing PDF uploaded. '
-                'You can still add issues manually below.</div>',
+                '<div class="info-box">No drawing PDF uploaded — go to '
+                'Project Setup to upload one, or go to Generate RFI to '
+                'raise an RFI by hand.</div>',
                 unsafe_allow_html=True)
 
         if not api_key:
@@ -120,23 +121,20 @@ def render_tab_analyse(email: str):
                 '<div class="info-box warn">Please contact support to activate AI features.</div>',
                 unsafe_allow_html=True)
 
-        tab_ai, tab_manual = st.tabs(["🔍  AI-Assisted Scan",
-                                       "✏️  Add Your Own Issue"])
-        with tab_ai:
-            if pdf_path:
-                st.text_area(
-                    "What issues should we look for?",
-                    placeholder='Leave blank to scan everything, or be specific — e.g. "reinforcement bar conflicts", '
-                                '"missing structural details on foundation sheets", '
-                                '"inconsistencies between architectural and structural drawings"',
-                    height=80,
-                    key="t3_focus_prompt",
-                    label_visibility="visible",
-                )
-                run_ai = st.button("🔍  Scan All Drawing Sheets",
-                                   use_container_width=True, disabled=(not api_key), key="t3_ai_scan")
-            else:
-                run_ai = False
+        if pdf_path:
+            st.text_area(
+                "What issues should we look for?",
+                placeholder='Leave blank to scan everything, or be specific — e.g. "reinforcement bar conflicts", '
+                            '"missing structural details on foundation sheets", '
+                            '"inconsistencies between architectural and structural drawings"',
+                height=80,
+                key="t3_focus_prompt",
+                label_visibility="visible",
+            )
+            run_ai = st.button("🔍  Scan All Drawing Sheets",
+                               use_container_width=True, disabled=(not api_key), key="t3_ai_scan")
+        else:
+            run_ai = False
 
 
         # ── Scan initiation ───────────────────────────────────────────────────
@@ -250,9 +248,8 @@ def render_tab_analyse(email: str):
                 st.warning(
                     "This PDF appears to contain scanned images rather than digital text. "
                     "The AI cannot read image-based drawings directly.\n\n"
-                    "**What to do:** Switch to the **Add Your Own Issue** tab above and describe "
-                    "each issue you find manually. Your description will be formatted into a "
-                    "proper RFI using AI."
+                    "**What to do:** Go to **Generate RFI** and use **+ New Manual RFI** "
+                    "to raise the issue by hand."
                 )
             else:
                 # ── Protection 2: large PDF gate ──────────────────────────────
@@ -314,49 +311,6 @@ def render_tab_analyse(email: str):
                         st.success(f"✓ AI found **{len(all_issues)} issues**. Review and approve below.")
                     else:
                         st.info("No issues detected — use Manual Entry if needed.")
-
-        with tab_manual:
-            sheet_map = load_project_sheet_map(pid, email)
-            with st.form("manual_form"):
-                desc      = st.text_area("RFI Description", height=120, label_visibility="collapsed",
-                                         placeholder="e.g. Sheet S101 shows SE62 mesh but Sheet S105 detail shows SE72.")
-                manual_pri = st.selectbox("Priority", _PRIORITY_OPTS, index=2,
-                                          key="manual_pri")
-                manual_rbd = st.date_input("Response Required By", key="manual_rbd")
-                submitted = st.form_submit_button("Format with AI →", type="primary")
-            if submitted and desc.strip():
-                try:
-                    import anthropic as _ant
-                    sheet_list = ", ".join(f"Page {p}={s}" for p, s in sheet_map.items())
-                    with st.spinner("AI is formatting your RFI…"):
-                        client = _ant.Anthropic(api_key=api_key)
-                        msg    = client.messages.create(
-                            model="claude-opus-4-6",
-                            max_tokens=1024,
-                            system=_SYSTEM_PROMPT,
-                            messages=[{"role": "user", "content":
-                                f"Sheet map: {sheet_list or 'unknown'}\n\n"
-                                f"Format this engineer's description as a single RFI issue:\n{desc}"}],
-                        )
-                    resp       = re.sub(r"```(?:json)?|```", "", msg.content[0].text).strip()
-                    new_issues = json.loads(resp)
-                    if isinstance(new_issues, list):
-                        existing = st.session_state.get("analysis_results", [])
-                        for iss in new_issues:
-                            iss["issue_number"]             = len(existing) + 1
-                            iss["priority"]                 = manual_pri
-                            iss["response_required_by"]     = str(manual_rbd)
-                            existing.append({"issue": iss, "status": "pending"})
-                        st.session_state.analysis_results = existing
-                        save_project_scan_results(pid,
-                            st.session_state.analysis_results, email)
-                        st.session_state["_analyse_do_rerun"] = True
-                except json.JSONDecodeError:
-                    st.error("Could not parse the AI response — please try again.")
-                except Exception as e:
-                    st.error(f"Error: {e}")
-                if st.session_state.pop("_analyse_do_rerun", False):
-                    st.rerun()
 
         # ── REVIEW RESULTS ────────────────────────────────────────────────────
         results = st.session_state.get("analysis_results", [])
@@ -585,8 +539,8 @@ def render_tab_analyse(email: str):
         elif not run_ai:
             st.markdown(
                 '<div class="info-box" style="margin-top:20px;">'
-                'Use <strong style="color:#1d4ed8;">AI-Assisted Scan</strong> to automatically '
-                'detect engineering issues, or describe one in the '
-                '<strong style="color:#1d4ed8;">Add Your Own Issue</strong> card above.'
+                'Use <strong style="color:#1d4ed8;">AI-Assisted Scan</strong> above to '
+                'automatically detect engineering issues. To raise an issue by hand, '
+                'go to <strong style="color:#1d4ed8;">Generate RFI</strong>.'
                 '</div>',
                 unsafe_allow_html=True)
