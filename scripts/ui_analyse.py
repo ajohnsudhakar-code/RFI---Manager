@@ -34,9 +34,28 @@ _SYSTEM_PROMPT = (
     "- Formatting, title block style, or presentation issues\n"
     "- Trivial notes, standard boilerplate, or general annotations\n"
     "- Items that are clearly intentional design choices with no coordination impact\n\n"
+    "One issue per entry: each array entry must cover exactly ONE distinct question. If a "
+    "sheet has several unrelated problems, output a separate entry for each — do not bundle "
+    "unrelated issues together, since a combined RFI leaves the easy answers waiting on the "
+    "hardest one.\n\n"
+    "Be specific about location: cite the exact sheet number, and where the text supports it, "
+    "the detail number, section, or grid line. Avoid vague references like 'the drawings' or "
+    "'this area'.\n\n"
     "Output rule: Return ONLY a valid JSON array. No markdown fences, no preamble, no explanation.\n\n"
     'JSON format: [{"issue_number": 1, "sheets": "S101", "category": "Missing Information", '
-    '"description": "...", "reason": "..."}]\n\n'
+    '"summary": "...", "description": "...", "reason": "..."}]\n\n'
+    "Field rules:\n"
+    "- \"summary\": one line, maximum 100 characters, no line breaks. A short, specific "
+    "statement of the single issue — this is used as the document subject line, so it must "
+    "stand alone as one line.\n"
+    "- \"description\": the fuller explanation (2-4 sentences). This becomes the actual RFI "
+    "question sent to the design team, so state precisely what is wrong and what needs to be "
+    "clarified or confirmed.\n"
+    "- \"sheets\": the sheet number(s) this issue applies to. If no sheet number can be "
+    "determined from the text, use an empty string \"\" — never the word 'unknown'.\n"
+    "- \"reason\": internal note for the reviewer deciding whether to approve this issue — "
+    "explain why it was flagged, e.g. which requirement or cross-reference it conflicts with. "
+    "This is never shown to the RFI recipient, so it can be terser than \"description\".\n\n"
     "Valid categories: \"Missing Information\", \"Conflict Between Sheets\", "
     "\"Coordination Issue\", \"Ambiguous Detail\", \"Specification Conflict\", "
     "\"Structural Concern\", \"Architectural Concern\", \"Services Conflict\""
@@ -489,7 +508,7 @@ def render_tab_analyse(email: str):
                         f'<div style="font-size:13px;color:#111111;font-weight:500;flex:1;'
                         f'display:-webkit-box;-webkit-line-clamp:2;'
                         f'-webkit-box-orient:vertical;overflow:hidden;">'
-                        f'{iss.get("description","")}</div>'
+                        f'{iss.get("summary") or iss.get("description","")[:100]}</div>'
                         f'<span style="background:{_badge_bg};color:{_badge_fg};'
                         f'border:1px solid {_badge_bd};font-size:10px;font-weight:700;'
                         f'text-transform:uppercase;letter-spacing:0.08em;'

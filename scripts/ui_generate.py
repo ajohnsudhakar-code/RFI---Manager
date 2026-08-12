@@ -155,7 +155,7 @@ def render_tab_generate(email: str):
                 continue
             _lp_cards_shown += 1
             _lp_snaps = _local_snaps(snaps_dir, _lp_rfi_n, max_snaps)
-            _lp_desc  = _lp_issue.get("description", "")
+            _lp_desc  = _lp_issue.get("summary") or _lp_issue.get("description", "")
             _lp_short = _lp_desc[:80] + ("…" if len(_lp_desc) > 80 else "")
             _lp_snap_lbl = f"🖼 {len(_lp_snaps)}" if _lp_snaps else "⚠ No snaps"
             _lp_snap_bg  = "#f0fdf4" if _lp_snaps else "#fffbeb"
@@ -189,8 +189,10 @@ def render_tab_generate(email: str):
                         "Specification Conflict", "Structural Concern",
                         "Architectural Concern", "Services Conflict",
                     ]
-                    st.session_state[f"t5_new_subject_{pid}"]  = _lp_issue.get("description", "")
-                    st.session_state[f"t5_new_question_{pid}"] = _lp_issue.get("reason", "")
+                    st.session_state[f"t5_new_subject_{pid}"]  = (
+                        _lp_issue.get("summary") or _lp_issue.get("description", "")[:100]
+                    )
+                    st.session_state[f"t5_new_question_{pid}"] = _lp_issue.get("description", "")
                     st.session_state[f"t5_new_sheets_{pid}"]   = _lp_issue.get("sheets", "")
                     _pri = _lp_issue.get("priority", "")
                     if _pri in _PRIORITY_OPTS_T5:
