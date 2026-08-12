@@ -15,7 +15,7 @@ from data_layer import (
     load_cfg,
     load_project_cfg, load_project_approved,
     proj_snapshots_dir,
-    get_rfi_num, add_label_to_image,
+    get_rfi_num,
     resolve_pdf_path,
     upload_project_snapshot, delete_project_snapshot,
     sync_snapshots_from_supabase,
@@ -265,13 +265,14 @@ def render_tab_crop(email: str):
                     '<div class="sec-lbl" style="margin:0;">Caption</div>'
                     '</div>',
                     unsafe_allow_html=True)
-                lbl_col, save_col = st.columns([2, 1])
-                with lbl_col:
-                    label = st.selectbox(
-                        "Drawing type",
-                        ["Plan", "Elevation", "Section", "Detail", "None"],
-                        key=f"lbl_{rfi_num}_{pid}",
+                cap_col, save_col = st.columns([2, 1])
+                with cap_col:
+                    caption_text = st.text_input(
+                        "Caption",
+                        key=f"cap_{rfi_num}_{pid}",
+                        max_chars=60,
                     )
+                    st.caption("Prints under this image on the RFI document — leave blank for no caption.")
                 with save_col:
                     st.markdown("<div style='margin-top:24px;'></div>", unsafe_allow_html=True)
                     _do_save = st.button("💾  Save Snapshot", type="primary",
@@ -279,9 +280,7 @@ def render_tab_crop(email: str):
                 _save_ok = False
                 if _do_save:
                     try:
-                        annotated = add_label_to_image(
-                            shot_img.copy(), label if label != "None" else ""
-                        )
+                        annotated = shot_img.copy()
                         buf = io.BytesIO()
                         annotated.convert("RGB").save(buf, format="PNG")
                         dest = snaps_dir / snap_name
@@ -297,8 +296,9 @@ def render_tab_crop(email: str):
                             )
                         else:
                             caps = load_project_captions(pid, email)
-                            if label and label != "None":
-                                caps[snap_name] = label
+                            _cap_val = caption_text.strip()
+                            if _cap_val:
+                                caps[snap_name] = _cap_val
                             save_project_captions(pid, caps, email)
                             st.success(f"✓ {snap_name} saved.")
                             _save_ok = True
@@ -325,6 +325,7 @@ def render_tab_crop(email: str):
                 f'</div>',
                 unsafe_allow_html=True)
             _pending_delete = st.session_state.get("t4_confirm_delete", "")
+            _gallery_caps = load_project_captions(pid, email)
 
             _grid_snaps = list(saved_snaps)
             if len(_grid_snaps) % 2 != 0:
@@ -354,6 +355,26 @@ def render_tab_crop(email: str):
                             st.caption(snap_fn)
 
                         si = row_start + gi
+
+                        _cur_cap = _gallery_caps.get(snap_fn, "")
+                        edit_col, save_cap_col = st.columns([3, 1])
+                        with edit_col:
+                            _edited_cap = st.text_input(
+                                "Caption", value=_cur_cap, key=f"editcap_{si}_{pid}",
+                                max_chars=60, label_visibility="collapsed",
+                                placeholder="Caption (prints under this image)",
+                            )
+                        with save_cap_col:
+                            if st.button("Save", key=f"savecap_{si}_{pid}", use_container_width=True):
+                                _c = load_project_captions(pid, email)
+                                _v = _edited_cap.strip()
+                                if _v:
+                                    _c[snap_fn] = _v
+                                else:
+                                    _c.pop(snap_fn, None)
+                                save_project_captions(pid, _c, email)
+                                st.rerun()
+
                         if _pending_delete == str(snap_path):
                             st.warning(
                                 "⚠ Are you sure you want to delete this snapshot? "
