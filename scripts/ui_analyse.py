@@ -17,6 +17,7 @@ from data_layer import (
     get_rfi_num, resolve_pdf_path,
     load_project_scan_results, save_project_scan_results,
     load_usage, load_scan_usage, increment_scan_usage,
+    log_error,
 )
 
 _PRIORITY_OPTS = ["Critical", "High", "Normal", "Low"]
@@ -266,15 +267,14 @@ def render_tab_analyse(email: str):
                         st.session_state["t3_do_scan"] = True
                         st.rerun()
                 else:
-                    # ── Increment daily counter before first API call ─────────
-                    increment_scan_usage(email)
-
-                    all_issues    = []
-                    batch_size    = 5
-                    total_batches = (len(pages_content) + batch_size - 1) // batch_size
-                    prog          = st.progress(0, text="Analyzing with AI…")
-                    client        = _ant.Anthropic(api_key=api_key)
-                    _focus        = st.session_state.get("t3_focus_prompt", "").strip()
+                    all_issues     = []
+                    batch_size     = 5
+                    total_batches  = (len(pages_content) + batch_size - 1) // batch_size
+                    parsed_batches = 0
+                    failed_batches = 0
+                    prog           = st.progress(0, text="Analyzing with AI…")
+                    client         = _ant.Anthropic(api_key=api_key)
+                    _focus         = st.session_state.get("t3_focus_prompt", "").strip()
 
                     for bi in range(0, len(pages_content), batch_size):
                         batch_txt = "\n\n---\n\n".join(pages_content[bi : bi + batch_size])
@@ -293,12 +293,22 @@ def render_tab_analyse(email: str):
                                 for iss in batch_issues:
                                     iss["issue_number"] = len(all_issues) + 1
                                     all_issues.append(iss)
-                        except json.JSONDecodeError:
-                            pass
+                                parsed_batches += 1
+                        except json.JSONDecodeError as e:
+                            failed_batches += 1
+                            log_error(e, context=f"ui_analyse batch {bn}/{total_batches} JSON parse failed — "
+                                                   f"response (first 1000 chars): {resp[:1000]!r}")
                         except Exception as e:
+                            failed_batches += 1
                             st.warning(f"Batch {bn} error: {e}")
 
                     prog.empty()
+
+                    # ── Only charge the daily counter for scans that produced
+                    #    at least one usable batch — a total failure costs
+                    #    nothing (see .claude/CLAUDE.md §6 usage limits) ──────
+                    if parsed_batches > 0:
+                        increment_scan_usage(email)
                     _existing = st.session_state.get("analysis_results", [])
                     _new = [{"issue": iss, "status": "pending"} for iss in all_issues]
                     _offset = len(_existing)
@@ -307,7 +317,16 @@ def render_tab_analyse(email: str):
                     st.session_state.analysis_results = _existing + _new
                     save_project_scan_results(pid,
                         st.session_state.analysis_results, email)
-                    if all_issues:
+                    if failed_batches > 0:
+                        st.warning(
+                            f"⚠️ {failed_batches} of {total_batches} sheet batches could not be read, "
+                            f"so some sheets were not analysed. "
+                            + (f"AI found **{len(all_issues)} issues** in the sheets that were read — "
+                               f"review below, then consider re-scanning to check the rest."
+                               if all_issues else
+                               "You may want to re-scan to check those sheets.")
+                        )
+                    elif all_issues:
                         st.success(f"✓ AI found **{len(all_issues)} issues**. Review and approve below.")
                     else:
                         st.info("No issues detected — use Manual Entry if needed.")
