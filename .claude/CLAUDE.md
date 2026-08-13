@@ -145,6 +145,7 @@ All source files live in `scripts/`. Each file has ONE job — never put logic i
 - Project IDs are now human-readable slugs e.g. mary-durnal-projects-a3f2 — old proj_001 style IDs exist only for soft-deleted test projects
 - Previously generated documents reads from Supabase Storage (`list_project_documents`) — survives container restarts. The left panel's pending-issue exclusion does NOT — since C1 (d894335), it checks `rfi_register` (`reg_rows`) instead of matching Storage filenames. Moving that exclusion off filename matching is what closed the bug where deleting a document made its issue card reappear in the pending list.
 - Local disk used only as session cache for PDFs and snapshots — all structured data writes go to Supabase only
+- Empty-label accessibility warning fires live on the two template-name `st.text_input` calls in the Instructions and Note template panels (`ui_generate.py`) — both pass `label=""` with `label_visibility="collapsed"`. Confirmed `label_visibility="collapsed"` does NOT suppress this warning by itself — Streamlit still requires a non-empty label string underneath it; the visibility setting only controls whether that label is shown. Will become an error in future Streamlit versions — fix: give both a real label (e.g. `"Template name"`) and keep `label_visibility="collapsed"` to hide it visually.
 
 ---
 
