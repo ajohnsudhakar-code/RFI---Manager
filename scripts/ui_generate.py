@@ -15,6 +15,7 @@ from data_layer import (
     upsert_project_register_rows, mark_register_document_generated, resolve_pdf_path,
     upload_project_document, sync_snapshots_from_supabase,
     upload_project_snapshot, delete_project_snapshot, load_project_register,
+    delete_project_register_row,
     load_rfi_templates, save_rfi_templates,
     list_project_documents, download_project_document,
     SCRIPTS_PY_DIR,
@@ -143,6 +144,7 @@ def render_tab_generate(email: str):
             st.session_state[f"t5_selected_rfi_{pid}"] = "new"
             st.session_state[f"t5_new_saved_{pid}"] = False
             st.session_state.pop(f"t5_new_record_{pid}", None)
+            st.session_state[f"t5_new_loaded_row_id_{pid}"] = None
             st.rerun()
 
         _lp_cards_shown = 0
@@ -181,6 +183,12 @@ def render_tab_generate(email: str):
                 st.session_state[f"t5_selected_rfi_{pid}"] = _lp_rfi_n
                 st.session_state[f"t5_new_saved_{pid}"] = False
                 st.session_state.pop(f"t5_new_record_{pid}", None)
+                _lp_matched_row = next(
+                    (r for r in reg_rows if r.get("rfi_number") == _lp_rfi_n), None
+                )
+                st.session_state[f"t5_new_loaded_row_id_{pid}"] = (
+                    _lp_matched_row.get("id") if _lp_matched_row else None
+                )
                 if st.session_state.get(f"t5_new_prefilled_rfi_{pid}") != _lp_rfi_n:
                     _PRIORITY_OPTS_T5 = ["Normal", "Critical", "High", "Low"]
                     _CATEGORY_OPTS_T5 = [
@@ -609,143 +617,190 @@ def render_tab_generate(email: str):
                     if not _subj or not _qst:
                         st.error("Subject and Question are both required.")
                     else:
-                        _up_files = st.session_state.get(f"t5_new_uploads_{pid}_{_reset_ctr}") or []
                         _num = int(st.session_state.get(f"t5_new_rfi_num_{pid}", _suggested_rfi_num))
-                        for _fi, _uf in enumerate(_up_files[:5], start=1):
-                            _fname = f"RFI_{_num:03d}_upload_snap{_fi}.png"
-                            _fdata = _uf.read()
-                            _fpath = snaps_dir / _fname
-                            _fpath.parent.mkdir(parents=True, exist_ok=True)
-                            _fpath.write_bytes(_fdata)
-                            upload_project_snapshot(email, pid, _fname, _fdata)
+                        _loaded_id = st.session_state.get(f"t5_new_loaded_row_id_{pid}")
+                        _orig_row  = next(
+                            (r for r in reg_rows if r.get("id") == _loaded_id), None
+                        ) if _loaded_id else None
+                        _collision = next(
+                            (r for r in reg_rows
+                             if r.get("rfi_number") == _num and r.get("id") != _loaded_id),
+                            None,
+                        )
+                        _renumber_locked = bool(
+                            _orig_row and _orig_row.get("rfi_number") != _num
+                            and _orig_row.get("document_path")
+                        )
+                        if _collision:
+                            st.error(
+                                f"RFI #{_num} is already used by "
+                                f"\"{_collision.get('description') or '(untitled)'}\". "
+                                f"Choose a different number and try again."
+                            )
+                        elif _renumber_locked:
+                            st.error(
+                                f"This RFI already has a generated document under "
+                                f"#{_orig_row.get('rfi_number')}. The number can't be "
+                                f"changed after a document has been generated."
+                            )
+                        else:
+                            _up_files = st.session_state.get(f"t5_new_uploads_{pid}_{_reset_ctr}") or []
+                            for _fi, _uf in enumerate(_up_files[:5], start=1):
+                                _fname = f"RFI_{_num:03d}_upload_snap{_fi}.png"
+                                _fdata = _uf.read()
+                                _fpath = snaps_dir / _fname
+                                _fpath.parent.mkdir(parents=True, exist_ok=True)
+                                _fpath.write_bytes(_fdata)
+                                upload_project_snapshot(email, pid, _fname, _fdata)
 
-                        # Rename snapshots from approved-list number to register number
-                        _snap_rename_ok = True
-                        if isinstance(_sel_rfi, int) and _sel_rfi != _num:
-                            _old_prefix = f"RFI_{_sel_rfi:03d}"
-                            _old_snaps  = sorted(snaps_dir.glob(f"{_old_prefix}_*_snap*.png"))
-                            if _old_snaps:
-                                _renames = [
-                                    (_op, snaps_dir / (f"RFI_{_num:03d}" + _op.name[len(_old_prefix):]))
-                                    for _op in _old_snaps
-                                ]
-                                # Phase 1: local renames — track _done_local for rollback
-                                _done_local = []
-                                for _old_p, _new_p in _renames:
-                                    try:
-                                        _old_p.rename(_new_p)
-                                        _done_local.append((_old_p, _new_p))
-                                    except Exception as _le:
-                                        for _ro, _rn in _done_local:
-                                            try: _rn.rename(_ro)
-                                            except Exception: pass
-                                        st.error(
-                                            f"⚠ Snapshot rename failed — Save cancelled.\n"
-                                            f"Could not rename {_old_p.name}: {_le}"
-                                        )
-                                        _snap_rename_ok = False
-                                        break
-                                # Phase 2: Supabase — track _done_cloud for rollback
-                                if _snap_rename_ok:
-                                    _done_cloud = []
+                            # Rename snapshots from approved-list number to register number
+                            _snap_rename_ok = True
+                            if isinstance(_sel_rfi, int) and _sel_rfi != _num:
+                                _old_prefix = f"RFI_{_sel_rfi:03d}"
+                                _old_snaps  = sorted(snaps_dir.glob(f"{_old_prefix}_*_snap*.png"))
+                                if _old_snaps:
+                                    _renames = [
+                                        (_op, snaps_dir / (f"RFI_{_num:03d}" + _op.name[len(_old_prefix):]))
+                                        for _op in _old_snaps
+                                    ]
+                                    # Phase 1: local renames — track _done_local for rollback
+                                    _done_local = []
                                     for _old_p, _new_p in _renames:
                                         try:
-                                            _snap_bytes = _new_p.read_bytes()
-                                        except Exception as _re:
-                                            _cleanup_errs = [
-                                                _rn.name for _ro, _rn in _done_cloud
-                                                if not delete_project_snapshot(email, pid, _rn.name)
-                                            ]
-                                            for _ro, _rn in _renames:
+                                            _old_p.rename(_new_p)
+                                            _done_local.append((_old_p, _new_p))
+                                        except Exception as _le:
+                                            for _ro, _rn in _done_local:
                                                 try: _rn.rename(_ro)
                                                 except Exception: pass
-                                            _em = (
+                                            st.error(
                                                 f"⚠ Snapshot rename failed — Save cancelled.\n"
-                                                f"Could not read {_new_p.name}: {_re}"
+                                                f"Could not rename {_old_p.name}: {_le}"
                                             )
-                                            if _cleanup_errs:
-                                                _em += (
-                                                    f"\nCloud snapshots in inconsistent state — "
-                                                    f"could not remove: {', '.join(_cleanup_errs)}"
-                                                )
-                                            st.error(_em)
                                             _snap_rename_ok = False
                                             break
-                                        if not upload_project_snapshot(
-                                            email, pid, _new_p.name, _snap_bytes
-                                        ):
-                                            _cleanup_errs = [
-                                                _rn.name for _ro, _rn in _done_cloud
-                                                if not delete_project_snapshot(email, pid, _rn.name)
-                                            ]
-                                            for _ro, _rn in _renames:
-                                                try: _rn.rename(_ro)
-                                                except Exception: pass
-                                            _em = (
-                                                f"⚠ Snapshot rename failed — Save cancelled.\n"
-                                                f"Cloud upload of {_new_p.name} failed. "
-                                                f"Check your connection and try again."
-                                            )
-                                            if _cleanup_errs:
-                                                _em += (
-                                                    f"\nCloud snapshots in inconsistent state — "
-                                                    f"could not remove: {', '.join(_cleanup_errs)}"
+                                    # Phase 2: Supabase — track _done_cloud for rollback
+                                    if _snap_rename_ok:
+                                        _done_cloud = []
+                                        for _old_p, _new_p in _renames:
+                                            try:
+                                                _snap_bytes = _new_p.read_bytes()
+                                            except Exception as _re:
+                                                _cleanup_errs = [
+                                                    _rn.name for _ro, _rn in _done_cloud
+                                                    if not delete_project_snapshot(email, pid, _rn.name)
+                                                ]
+                                                for _ro, _rn in _renames:
+                                                    try: _rn.rename(_ro)
+                                                    except Exception: pass
+                                                _em = (
+                                                    f"⚠ Snapshot rename failed — Save cancelled.\n"
+                                                    f"Could not read {_new_p.name}: {_re}"
                                                 )
-                                            st.error(_em)
-                                            _snap_rename_ok = False
-                                            break
-                                        _done_cloud.append((_old_p, _new_p))
-                                        if not delete_project_snapshot(email, pid, _old_p.name):
-                                            st.warning(
-                                                f"⚠ Old cloud snapshot {_old_p.name} could not be "
-                                                f"removed. It is a stale duplicate and will not "
-                                                f"affect the generated document."
-                                            )
+                                                if _cleanup_errs:
+                                                    _em += (
+                                                        f"\nCloud snapshots in inconsistent state — "
+                                                        f"could not remove: {', '.join(_cleanup_errs)}"
+                                                    )
+                                                st.error(_em)
+                                                _snap_rename_ok = False
+                                                break
+                                            if not upload_project_snapshot(
+                                                email, pid, _new_p.name, _snap_bytes
+                                            ):
+                                                _cleanup_errs = [
+                                                    _rn.name for _ro, _rn in _done_cloud
+                                                    if not delete_project_snapshot(email, pid, _rn.name)
+                                                ]
+                                                for _ro, _rn in _renames:
+                                                    try: _rn.rename(_ro)
+                                                    except Exception: pass
+                                                _em = (
+                                                    f"⚠ Snapshot rename failed — Save cancelled.\n"
+                                                    f"Cloud upload of {_new_p.name} failed. "
+                                                    f"Check your connection and try again."
+                                                )
+                                                if _cleanup_errs:
+                                                    _em += (
+                                                        f"\nCloud snapshots in inconsistent state — "
+                                                        f"could not remove: {', '.join(_cleanup_errs)}"
+                                                    )
+                                                st.error(_em)
+                                                _snap_rename_ok = False
+                                                break
+                                            _done_cloud.append((_old_p, _new_p))
+                                            if not delete_project_snapshot(email, pid, _old_p.name):
+                                                st.warning(
+                                                    f"⚠ Old cloud snapshot {_old_p.name} could not be "
+                                                    f"removed. It is a stale duplicate and will not "
+                                                    f"affect the generated document."
+                                                )
 
-                        if _snap_rename_ok:
-                            _ci_save = st.session_state.get(f"t5_new_client_idx_{pid}", 0)
-                            if not isinstance(_ci_save, int) or _ci_save < 0 or _ci_save >= len(clients):
-                                _ci_save = 0
-                            _client_id_save = (
-                                (clients[_ci_save].get("id") or f"pos{_ci_save}") if clients else ""
-                            )
-                            _new_issue = {
-                                "rfi_number":            _num,
-                                "description":           _subj,
-                                "question":              _qst,
-                                "sheets":                st.session_state.get(f"t5_new_sheets_{pid}", ""),
-                                "reference_doc":         st.session_state.get(f"t5_new_ref_doc_{pid}", ""),
-                                "response_required_by":  str(st.session_state.get(f"t5_new_rbd_{pid}", "")),
-                                "priority":              st.session_state.get(f"t5_new_priority_{pid}", "Normal"),
-                                "category":              st.session_state.get(f"t5_new_category_{pid}", ""),
-                                "cost_impact":           st.session_state.get(f"t5_new_cost_{pid}", "TBD"),
-                                "schedule_impact":       st.session_state.get(f"t5_new_schedule_{pid}", "TBD"),
-                                "environmental_impact":  st.session_state.get(f"t5_new_env_{pid}", "TBD"),
-                                "public_affairs_impact": st.session_state.get(f"t5_new_pub_{pid}", "TBD"),
-                                "client_id":             _client_id_save,
-                                "instructions":          st.session_state.get(f"t5_new_instructions_{pid}", ""),
-                                "note":                  st.session_state.get(f"t5_new_note_{pid}", ""),
-                            }
-                            upsert_project_register_rows(pid, [_new_issue], pcfg.get("name", ""), email)
-                            st.session_state[f"t5_new_record_{pid}"] = {
-                                "rfi_num":             _num,
-                                "priority":            st.session_state.get(f"t5_new_priority_{pid}", "Normal"),
-                                "category":            st.session_state.get(f"t5_new_category_{pid}", ""),
-                                "subject":             _subj,
-                                "question":            _qst,
-                                "sheets":              st.session_state.get(f"t5_new_sheets_{pid}", ""),
-                                "reference_doc":        st.session_state.get(f"t5_new_ref_doc_{pid}", ""),
-                                "response_required_by": st.session_state.get(f"t5_new_rbd_{pid}"),
-                                "client_idx":          st.session_state.get(f"t5_new_client_idx_{pid}", 0),
-                                "instructions":        st.session_state.get(f"t5_new_instructions_{pid}", ""),
-                                "note":                st.session_state.get(f"t5_new_note_{pid}", ""),
-                                "cost":                st.session_state.get(f"t5_new_cost_{pid}", "TBD"),
-                                "schedule":            st.session_state.get(f"t5_new_schedule_{pid}", "TBD"),
-                                "env":                 st.session_state.get(f"t5_new_env_{pid}", "TBD"),
-                                "pub":                 st.session_state.get(f"t5_new_pub_{pid}", "TBD"),
-                            }
-                            st.session_state[f"t5_new_saved_{pid}"] = True
-                            st.rerun()
+                            if _snap_rename_ok:
+                                _ci_save = st.session_state.get(f"t5_new_client_idx_{pid}", 0)
+                                if not isinstance(_ci_save, int) or _ci_save < 0 or _ci_save >= len(clients):
+                                    _ci_save = 0
+                                _client_id_save = (
+                                    (clients[_ci_save].get("id") or f"pos{_ci_save}") if clients else ""
+                                )
+                                _new_issue = {
+                                    "rfi_number":            _num,
+                                    "description":           _subj,
+                                    "question":              _qst,
+                                    "sheets":                st.session_state.get(f"t5_new_sheets_{pid}", ""),
+                                    "reference_doc":         st.session_state.get(f"t5_new_ref_doc_{pid}", ""),
+                                    "response_required_by":  str(st.session_state.get(f"t5_new_rbd_{pid}", "")),
+                                    "priority":              st.session_state.get(f"t5_new_priority_{pid}", "Normal"),
+                                    "category":              st.session_state.get(f"t5_new_category_{pid}", ""),
+                                    "cost_impact":           st.session_state.get(f"t5_new_cost_{pid}", "TBD"),
+                                    "schedule_impact":       st.session_state.get(f"t5_new_schedule_{pid}", "TBD"),
+                                    "environmental_impact":  st.session_state.get(f"t5_new_env_{pid}", "TBD"),
+                                    "public_affairs_impact": st.session_state.get(f"t5_new_pub_{pid}", "TBD"),
+                                    "client_id":             _client_id_save,
+                                    "instructions":          st.session_state.get(f"t5_new_instructions_{pid}", ""),
+                                    "note":                  st.session_state.get(f"t5_new_note_{pid}", ""),
+                                }
+                                upsert_project_register_rows(pid, [_new_issue], pcfg.get("name", ""), email)
+
+                                _fresh_rows = load_project_register(pid, email)
+                                _saved_row  = next(
+                                    (r for r in _fresh_rows if r.get("rfi_number") == _num), None
+                                )
+                                st.session_state[f"t5_new_loaded_row_id_{pid}"] = (
+                                    _saved_row.get("id") if _saved_row else None
+                                )
+
+                                if _orig_row and _orig_row.get("rfi_number") != _num:
+                                    if not delete_project_register_row(
+                                        pid, _orig_row["rfi_number"], email
+                                    ):
+                                        st.error(
+                                            f"RFI saved as #{_num}, but the old row under "
+                                            f"#{_orig_row['rfi_number']} could not be removed — "
+                                            f"it now appears under BOTH numbers. Open "
+                                            f"#{_orig_row['rfi_number']} in the register and "
+                                            f"delete it manually."
+                                        )
+
+                                st.session_state[f"t5_new_record_{pid}"] = {
+                                    "rfi_num":             _num,
+                                    "priority":            st.session_state.get(f"t5_new_priority_{pid}", "Normal"),
+                                    "category":            st.session_state.get(f"t5_new_category_{pid}", ""),
+                                    "subject":             _subj,
+                                    "question":            _qst,
+                                    "sheets":              st.session_state.get(f"t5_new_sheets_{pid}", ""),
+                                    "reference_doc":        st.session_state.get(f"t5_new_ref_doc_{pid}", ""),
+                                    "response_required_by": st.session_state.get(f"t5_new_rbd_{pid}"),
+                                    "client_idx":          st.session_state.get(f"t5_new_client_idx_{pid}", 0),
+                                    "instructions":        st.session_state.get(f"t5_new_instructions_{pid}", ""),
+                                    "note":                st.session_state.get(f"t5_new_note_{pid}", ""),
+                                    "cost":                st.session_state.get(f"t5_new_cost_{pid}", "TBD"),
+                                    "schedule":            st.session_state.get(f"t5_new_schedule_{pid}", "TBD"),
+                                    "env":                 st.session_state.get(f"t5_new_env_{pid}", "TBD"),
+                                    "pub":                 st.session_state.get(f"t5_new_pub_{pid}", "TBD"),
+                                }
+                                st.session_state[f"t5_new_saved_{pid}"] = True
+                                st.rerun()
 
             else:
                 # ─── VIEW MODE ────────────────────────────────────────────────

@@ -1275,6 +1275,24 @@ def update_project_register_status(pid: str, rfi_num: int, status: str, email: s
             _warn("Could not sync status to database. Working in offline mode.")
 
 
+def delete_project_register_row(pid: str, rfi_num: int, email: str = "") -> bool:
+    """Delete a single register row. Returns True only on confirmed deletion."""
+    sb = _get_storage_client()
+    if sb and email and pid:
+        try:
+            (sb.table("rfi_register")
+               .delete()
+               .eq("email", email)
+               .eq("project_id", pid)
+               .eq("rfi_number", rfi_num)
+               .execute())
+            return True
+        except Exception as e:
+            _log_error("delete_project_register_row[supabase]", e)
+            return False
+    return False
+
+
 def _migrate_legacy_to_projects(email: str = ""):
     """Idempotent migration: move project data into the per-user folder.
 
