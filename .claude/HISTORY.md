@@ -902,3 +902,75 @@ delete-old, the same order and the same explicit-failure-reporting pattern as
 the collision guard's renumber cleanup, via a new `delete_project_document`
 helper matching `delete_project_snapshot`'s contract.
 Files: data_layer.py, ui_generate.py
+
+---
+
+## Tab 5 Fixes — Session 5 (13 August 2026) — the list rebuild
+
+**C1 (d894335) — dedupe pending issues against the register, not Storage** ✅ RESOLVED
+The left panel excluded an approved AI issue from the pending list by
+substring-matching its filename against whatever `.docx` names happened to
+exist in Supabase Storage. This meant deleting a generated document made its
+issue card reappear in the pending list — a stale AI issue resurrecting
+itself the moment its paper trail was cleaned up — and the match itself was
+never guaranteed to line up with the actual RFI it was supposed to represent.
+Fix: exclude a pending issue once a register row exists for its `rfi_number`,
+using `reg_rows` (already loaded) instead of a Storage listing.
+Proof this is a strict superset of the filename check, not just a different
+heuristic: every code path that ever sets `document_path` runs through a Save
+first — `upsert_project_register_rows` writes the register row, and only
+after that succeeds does Generate call `mark_register_document_generated`
+(change 2 of the register arc, above). So "has a register row" is true
+whenever "has a generated document" is true, and is also true for saved
+drafts that the filename check could never have caught in the first place —
+the filename check could never exclude anything the register check does not.
+This closed the resurrection bug as a side effect: deleting a document no
+longer un-hides its issue, because the register row — not the document —
+is what the exclusion checks.
+File: ui_generate.py
+
+**C2 (8045c90) — folders, search, compact rows** ✅ RESOLVED
+The left panel was a flat, unfiltered list with no way to search and no
+visual distinction between an unraised AI issue, a saved-but-ungenerated
+draft, and a sent RFI. Rebuilt as a folder-filtered (All / To raise / Draft /
+Generated, each with a live count), form-gated search over number and
+subject, one compact row per RFI (number, kind marker, due date, subject).
+Three implementation decisions, each made against a specific failure mode
+rather than by default:
+- `st.button` per row, not `st.dataframe` row selection — dataframe
+  selection state is sticky across reruns, so a selection made once stays
+  selected on every subsequent rerun including the ones fired by typing in
+  the detail form beside it. That would re-dispatch the open-RFI handler on
+  every keystroke, silently discarding whatever the user was mid-typing in
+  the form. A button only fires on the run it's actually clicked.
+- CSS `text-overflow: ellipsis` on the row label, not a fixed character
+  slice — a fixed cutoff (e.g. `subject[:40]`) is only correct for one
+  window width and one font/DPI combination; resize the window or change
+  DPI and it's wrong again, either truncating too early or overflowing.
+  Ellipsis via CSS truncates against the actual rendered width, so it stays
+  correct across resize.
+- Row label ordering puts the subject last — `RFI-{num} kind due — subject`
+  — specifically so the ellipsis (which truncates from the end of the
+  string) eats into the free-text subject first. Number and due date are the
+  two things a user scans the list for; they must never be the part that
+  gets clipped.
+File: ui_generate.py
+
+**C3 — list-or-detail — built, tested, deliberately discarded**
+Replaced the permanent two-column split (list left, detail right) with a
+single-pane Gmail-style view: list full width when nothing is open, detail
+full width with a back link when an RFI is open. Compiled clean, discarded
+via `git checkout` back to 8045c90 before merge — not a bug, a reversed
+design call.
+Reasoning at the time: with the old fixed-width layout the detail panel
+had roughly 360px inside a 600px total panel — cramped enough that
+replacing the split looked like the fix.
+Why it was wrong: Gmail's own desktop client keeps the list beside the
+message — only its mobile layout collapses to list-or-detail. Tab 5 renders
+at full application width (~1100px+), not the 600px the original reasoning
+assumed, so a split there gives the list ~400px and the detail ~1100px
+worth of the remaining share — no cramping at all. The narrow-panel
+argument was correct for a width Tab 5 doesn't actually have; the permanent
+split was reinstated because the premise that justified replacing it did
+not hold at the tab's real width.
+File: ui_generate.py (change built and reverted; no net diff on master)
