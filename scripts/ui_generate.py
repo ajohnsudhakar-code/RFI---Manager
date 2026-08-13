@@ -15,7 +15,7 @@ from data_layer import (
     upsert_project_register_rows, mark_register_document_generated, resolve_pdf_path,
     upload_project_document, sync_snapshots_from_supabase,
     upload_project_snapshot, delete_project_snapshot, load_project_register,
-    delete_project_register_row,
+    delete_project_register_row, delete_project_document,
     load_rfi_templates, save_rfi_templates,
     list_project_documents, download_project_document,
     SCRIPTS_PY_DIR,
@@ -36,6 +36,44 @@ def _default_kwarg(key: str, param: str, value):
 def _local_snaps(snaps_dir: Path, rfi_num: int, max_snaps: int) -> list:
     found = sorted(snaps_dir.glob(f"RFI_{rfi_num:03d}_*_snap*.png"))
     return [f.name for f in found[:max_snaps]]
+
+
+def _register_row_to_record(row: dict, clients: list) -> dict:
+    """Build a dict shaped like t5_new_record_{pid} from a register row,
+    so a saved RFI can be reopened into the existing View/Edit/Generate paths."""
+    _rbd_raw = row.get("response_required_by")
+    _rbd = None
+    if _rbd_raw:
+        try:
+            _rbd = date.fromisoformat(str(_rbd_raw))
+        except (ValueError, TypeError):
+            _rbd = None
+
+    _client_id = row.get("client_id", "")
+    _client_idx = next(
+        (i for i, c in enumerate(clients) if (c.get("id") or f"pos{i}") == _client_id),
+        None,
+    )
+
+    return {
+        "rfi_num":             row.get("rfi_number", 1),
+        "priority":            row.get("priority", "Normal"),
+        "category":            row.get("category", ""),
+        "subject":             row.get("description", ""),
+        "question":            row.get("question", ""),
+        "sheets":              row.get("sheet_reference", ""),
+        "reference_doc":       row.get("reference_doc", ""),
+        "response_required_by": _rbd,
+        "client_idx":          _client_idx,
+        "client_missing":      _client_idx is None,
+        "client_id_raw":       _client_id,
+        "instructions":        row.get("instructions", ""),
+        "note":                row.get("note", ""),
+        "cost":                row.get("cost_impact", "TBD"),
+        "schedule":            row.get("schedule_impact", "TBD"),
+        "env":                 row.get("environmental_impact", "TBD"),
+        "pub":                 row.get("public_affairs_impact", "TBD"),
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -223,6 +261,46 @@ def render_tab_generate(email: str):
                 'No pending RFIs. Find your documents in Previously generated '
                 'documents below.</div>',
                 unsafe_allow_html=True)
+
+        # ── Saved RFIs (register rows — reopen for view/edit/regenerate) ─────
+        if reg_rows:
+            st.markdown(
+                '<div style="font-size:12px;font-weight:700;color:#374151;'
+                'margin-top:16px;margin-bottom:8px;">Saved RFIs</div>',
+                unsafe_allow_html=True)
+            for _sv_row in reg_rows:
+                _sv_num  = _sv_row.get("rfi_number")
+                if _sv_num is None:
+                    continue
+                _sv_desc  = _sv_row.get("description", "")
+                _sv_short = _sv_desc[:80] + ("…" if len(_sv_desc) > 80 else "")
+                _sv_has_doc = bool(_sv_row.get("document_path"))
+                _sv_badge_lbl = "✓ Sent" if _sv_has_doc else "Draft"
+                _sv_badge_bg  = "#f0fdf4" if _sv_has_doc else "#f9fafb"
+                _sv_badge_bd  = "#bbf7d0" if _sv_has_doc else "#e5e7eb"
+                _sv_badge_fg  = "#15803d" if _sv_has_doc else "#6b7280"
+                st.markdown(
+                    f'<div style="border:1px solid #e5e7eb;border-radius:6px;'
+                    f'padding:8px 10px;margin-bottom:4px;">'
+                    f'<div style="font-size:12px;font-weight:700;color:#1d4ed8;">'
+                    f'RFI-{_sv_num:03d}</div>'
+                    f'<div style="font-size:11px;color:#374151;margin:2px 0;">'
+                    f'{_sv_short}</div>'
+                    f'<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">'
+                    f'<span style="background:{_sv_badge_bg};border:1px solid {_sv_badge_bd};'
+                    f'color:{_sv_badge_fg};font-size:10px;padding:1px 6px;border-radius:8px;">'
+                    f'{_sv_badge_lbl}</span>'
+                    f'</div></div>',
+                    unsafe_allow_html=True)
+                if st.button("→ Open RFI", key=f"t5_lp_reg_{_sv_num}_{pid}",
+                             use_container_width=True):
+                    st.session_state[f"t5_selected_rfi_{pid}"] = _sv_num
+                    st.session_state[f"t5_new_loaded_row_id_{pid}"] = _sv_row.get("id")
+                    st.session_state[f"t5_new_record_{pid}"] = _register_row_to_record(
+                        _sv_row, clients
+                    )
+                    st.session_state[f"t5_new_saved_{pid}"] = True
+                    st.rerun()
 
     with _rp_col:
         # ── Setup vars needed by the form ────────────────────────────────────
@@ -866,11 +944,20 @@ def render_tab_generate(email: str):
                     else:
                         _ro("Response Required By", "")
                 with _vq4:
-                    _ci_v = _rec.get("client_idx", 0)
-                    if not isinstance(_ci_v, int) or _ci_v < 0 or _ci_v >= len(clients):
-                        _ci_v = 0
-                    _send_to = clients[_ci_v].get("company", "—") if clients else "—"
-                    _ro("Send To", _send_to)
+                    if _rec.get("client_missing"):
+                        st.markdown(
+                            f'<div style="font-size:11px;color:#6b7280;">Send To</div>'
+                            f'<div style="font-size:12px;color:#b45309;font-weight:600;">'
+                            f'⚠ Original recipient not found '
+                            f'(stored id: {_rec.get("client_id_raw", "?")}). '
+                            f'Choose a recipient before generating.</div>',
+                            unsafe_allow_html=True)
+                    else:
+                        _ci_v = _rec.get("client_idx", 0)
+                        if not isinstance(_ci_v, int) or _ci_v < 0 or _ci_v >= len(clients):
+                            _ci_v = 0
+                        _send_to = clients[_ci_v].get("company", "—") if clients else "—"
+                        _ro("Send To", _send_to)
 
                 # Section: Instructions & Note
                 st.markdown('<div class="sec-lbl" style="margin-top:12px;">Instructions & Note</div>',
@@ -982,7 +1069,19 @@ def render_tab_generate(email: str):
                     _qst  = _rec.get("question", "").strip()
                     if not _subj or not _qst:
                         st.error("Subject and Question are both required.")
+                    elif _rec.get("client_missing"):
+                        st.error(
+                            f"The original recipient for this RFI "
+                            f"(stored id: {_rec.get('client_id_raw', '?')}) no longer "
+                            f"exists in your recipients list. Click Edit and choose a "
+                            f"recipient, then Save, before generating the document."
+                        )
                     else:
+                        _view_gen_orig_row = next(
+                            (r for r in reg_rows
+                             if r.get("id") == st.session_state.get(f"t5_new_loaded_row_id_{pid}")),
+                            None,
+                        )
                         _up_files = st.session_state.get(f"t5_new_uploads_{pid}_{_reset_ctr}") or []
                         _num = int(_rec.get("rfi_num", _suggested_rfi_num))
                         for _fi, _uf in enumerate(_up_files[:5], start=1):
@@ -1083,6 +1182,26 @@ def render_tab_generate(email: str):
                                 else:
                                     mark_register_document_generated(
                                         pid, _num, email, os.path.basename(out_path))
+                                    _old_doc = (
+                                        _view_gen_orig_row.get("document_path")
+                                        if _view_gen_orig_row else None
+                                    )
+                                    if _old_doc and _old_doc != os.path.basename(out_path):
+                                        _old_local = out_dir / _old_doc
+                                        if _old_local.exists():
+                                            try:
+                                                _old_local.unlink()
+                                            except Exception:
+                                                pass
+                                        if not delete_project_document(email, pid, _old_doc):
+                                            st.warning(
+                                                f"New document generated as "
+                                                f"{os.path.basename(out_path)}, but the "
+                                                f"previous document ({_old_doc}) could not "
+                                                f"be removed from storage — both now exist. "
+                                                f"Remove {_old_doc} manually from Previously "
+                                                f"generated documents if it's no longer needed."
+                                            )
                                 st.session_state[f"t5_new_last_doc_{pid}"] = out_path
                                 st.session_state[f"t5_last_generated_{pid}"] = out_path
                                 if isinstance(_sel_rfi, int):

@@ -616,6 +616,25 @@ def delete_project_snapshot(email: str, pid: str, filename: str) -> bool:
         return False
 
 
+def delete_project_document(email: str, pid: str, filename: str) -> bool:
+    """Delete a generated Word document from Supabase Storage.
+    Returns True if deleted or file did not exist, False on unexpected error.
+    Storage path: {email_folder}/{pid}/output/{filename}
+    """
+    sb = _get_storage_client()
+    if not sb:
+        return False
+    try:
+        storage_path = f"{email_to_folder(email)}/{pid}/output/{filename}"
+        sb.storage.from_("rfi-manager-files").remove([storage_path])
+        return True
+    except Exception as e:
+        if _is_not_found_error(e):
+            return True
+        _log_error("delete_project_document", e)
+        return False
+
+
 def upload_project_document(email: str, pid: str, filename: str, data: bytes) -> bool:
     """Upload a generated Word document to Supabase Storage rfi-manager-files bucket.
     Returns True on success, False on failure.
