@@ -185,13 +185,20 @@ def render_tab_generate(email: str):
             st.session_state[f"t5_new_loaded_row_id_{pid}"] = None
             st.rerun()
 
+        _registered_nums = set()
+        for _r in reg_rows:
+            _rn = _r.get("rfi_number")
+            if _rn is None:
+                continue
+            try:
+                _registered_nums.add(int(_rn))
+            except (TypeError, ValueError):
+                continue
+
         _lp_cards_shown = 0
         for _lp_issue in approved:
             _lp_rfi_n = get_rfi_num(_lp_issue, 1)
-            _rfi_tag = f"RFI_{_lp_rfi_n:03d}"
-            _in_local = any(_rfi_tag in p.name for p in out_dir.glob("*.docx"))
-            _in_cloud = any(_rfi_tag in n for n in _sb_doc_names)
-            if _in_local or _in_cloud:
+            if _lp_rfi_n in _registered_nums:
                 continue
             _lp_cards_shown += 1
             _lp_snaps = _local_snaps(snaps_dir, _lp_rfi_n, max_snaps)
