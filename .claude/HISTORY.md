@@ -625,3 +625,280 @@ uncommitted.
 Committed as 563f2e9. Temporary probe instrumentation added to diagnose this
 has been removed.
 File: ui_generate.py
+
+---
+
+## Tab 1 Fixes — Session 2 (10 August 2026)
+
+**Layout rework and City field** ✅ RESOLVED
+ui_company.py rebuilt as a centred single-column card layout (max-width
+600px) — the pattern later reused for Tab 2's rework the same session. Field
+labels changed to sentence case throughout. Added a `city` field to the
+company address block (session key `co_city`), stored in
+`config_data.company.city`.
+Fix: generate_rfi.py's document-header address builder rewritten to include
+the new field — joins street address, `"city postcode"`, and country with
+commas, replacing the old formatter that only ever handled three fixed
+positional parts and had no slot for city at all.
+Files: ui_company.py, generate_rfi.py
+
+---
+
+## Tab 2 Fixes — Session 3 (10–13 August 2026)
+
+**Layout rework — project name as heading, drawings consolidated** ✅ RESOLVED
+ui_project.py rebuilt as a centred single-column layout matching Tab 1's new
+pattern. Project name promoted to the page heading, replacing the separate
+"Project Information" section label. Drawing PDF upload and the existing-PDF
+list merged into one "Drawings" section.
+File: ui_project.py
+
+**Recipients — stable client ids** ✅ RESOLVED
+Clients were keyed by list position (`enumerate` index) for edit and delete.
+Reordering, adding, or deleting a recipient shifted every later index, so an
+in-progress edit, or any stored reference to "recipient #2," could silently
+end up pointing at a different company once the list changed underneath it.
+Fix: `_blank_client()` now stamps a `uuid4().hex` into a `client["id"]` field
+at creation. `_client_cid(client, idx)` returns that id, falling back to
+`f"pos{idx}"` only for legacy clients saved before this change —
+`_backfill_client_ids()` fills in a real id for any client still missing one
+on next save. Edit/delete state (`t2_client_form_mode`) is now keyed by this
+stable id, not list position. This same id and fallback format later became
+the value written into `rfi_register.client_id` (see the register arc under
+Tab 5 Session 4) — the two features share one identity scheme.
+Also: recipient rows redesigned (avatar-initials circle, company + role on
+one line, contact details condensed to a second line), and the PDF-upload
+success message trimmed to drop the redundant repeated filename.
+File: ui_project.py
+
+**Button label wrapping in recipient and confirm rows** ✅ RESOLVED
+Emoji + text labels ("💾 Save Recipient", "✓ Yes, Delete") wrapped onto two
+lines in the narrower recipient-row buttons introduced by the layout rework.
+Fix: Shortened to bare labels ("Save", "Cancel", "Delete") or single icons
+("✏️", "🗑"), button columns widened proportionally.
+File: ui_project.py
+
+**New project creation losing Tab 2 on rerun** ✅ RESOLVED
+After clicking + New Project, typing into the name/address/number fields
+triggers a rerun on every keystroke. The one-shot JS tab-click flag
+(`_goto_tab2`, from BUG-20) is consumed with `pop()` and fires exactly once —
+every rerun after the first keystroke left the tab picker free to fall back
+to its default, bouncing the user off Tab 2 mid-entry.
+Fix: While a new project is unsaved, every rerun snapshots the `t2_*` session
+keys scoped to the current pid; if the snapshot differs from the previous
+rerun's (the user is actively typing), the tab-click JS is re-fired. The
+snapshot is cleared once the project is no longer new/unsaved.
+File: app.py
+
+---
+
+## Tab 4 Fixes — Session 2 (12 August 2026)
+
+**Free-text captions, editable after crop, no image stamping** ✅ RESOLVED
+Captions were a fixed dropdown (Plan / Elevation / Section / Detail / None)
+and, once chosen, were burned directly into the snapshot's pixels via
+`add_label_to_image()` before the file was saved — permanent, not editable
+afterward, and not descriptive of the actual issue.
+Fix: Replaced the dropdown with a free-text field (max 60 chars) stored only
+in `captions_data` — the saved image itself is never modified. Added an
+inline edit-and-save control to each snapshot already in the gallery, so a
+caption can be corrected after the crop was saved without re-cropping.
+`add_label_to_image` import removed from ui_crop.py.
+File: ui_crop.py
+
+---
+
+## Tab 3 Fixes — Session 2 (12–13 August 2026)
+
+**Manual issue entry removed — consolidated into Tab 5** ✅ RESOLVED
+Tab 3 had its own "Add Your Own Issue" tab running a separate AI call to
+format free text into an issue. Tab 5 already had an equivalent, better
+integrated "+ New Manual RFI" path (Bug #37/#38). Keeping both meant two
+different manual-entry flows writing to different places with different
+fields.
+Fix: Removed the manual-entry tab, its form, and its standalone `anthropic`
+call from ui_analyse.py entirely. Every message that used to point at it (no
+PDF uploaded, scanned-PDF-can't-be-read warning) now points at Tab 5's
+"+ New Manual RFI" instead.
+File: ui_analyse.py
+
+**Batch failure reporting; scan only charged when at least one batch parses** ✅ RESOLVED
+A scan splits drawing pages into batches of 5 and calls the AI once per
+batch. A `JSONDecodeError` on any batch was silently swallowed
+(`except json.JSONDecodeError: pass`) — the user saw either a normal-looking
+result (if other batches succeeded) or "No issues detected" (if all of them
+failed), with no indication anything had gone wrong. The daily scan-usage
+counter was also incremented unconditionally before the first API call, so a
+scan that failed on every batch still cost the user one of their limited
+daily scans.
+Fix: Track `parsed_batches` and `failed_batches` counts. On a parse failure,
+log the raw AI response (first 1000 chars) via `log_error` for diagnosis and
+continue with the remaining batches rather than aborting. After the loop,
+`increment_scan_usage(email)` is only called if `parsed_batches > 0`. If any
+batch failed, a warning names how many of the total batches could not be
+read, distinct from the plain success/no-issues messages.
+File: ui_analyse.py
+
+**Summary field added to scan prompt; Subject/Question prefill fixed** ✅ RESOLVED
+Two related problems in how a scan result reached Tab 5's manual-RFI form:
+the AI's JSON output had no dedicated short-title field, so Tab 5's Subject
+field and Tab 3's own issue-card preview both fell back to the full,
+multi-sentence `description`, producing unusably long RFI subject lines —
+and, more seriously, the Question field prefill was reading
+`_lp_issue.get("reason", "")`, the AI's internal note to the *reviewer*
+explaining why an issue was flagged for approval, never meant to be seen by
+the RFI recipient. Every manually-generated RFI created from an AI-scanned
+issue was sending the reviewer's internal reasoning to the client as the
+actual question, instead of the issue description.
+Fix: Added a `summary` field to the AI's required JSON output — one line,
+≤100 characters, one issue per entry (the prompt now explicitly forbids
+bundling unrelated issues into a single entry, since a combined RFI leaves
+the easy answers waiting on the hardest one) — with explicit field-by-field
+rules distinguishing `summary` (subject line), `description` (the actual
+question sent to the recipient), and `reason` (reviewer-only, never shown to
+the recipient). Also added a location-specificity rule (cite exact
+sheet/detail/grid references, avoid "the drawings"/"this area"). Tab 3's
+issue-card preview and Tab 5's Subject prefill now read `summary`, falling
+back to `description[:100]` for older or manual issues without one. Tab 5's
+Question prefill now correctly reads `description`, not `reason`.
+Files: ui_analyse.py, ui_generate.py
+
+---
+
+## Tab 5 Fixes — Session 4 (13 August 2026) — the register arc
+
+Four changes over two days, taking `rfi_register` from a thin status-tracking
+table to the single source of truth Tab 5's Generate, Edit, and (new) reopen
+paths all read and write.
+
+**1. Schema documentation catch-up** ✅ RESOLVED
+The `CREATE TABLE` comment block in app.py — the documented source of truth
+per `.claude/CLAUDE.md` §6 — had drifted from the live Supabase schema across
+5 tables (`approved_rfis`, `rfi_register`, `rfi_usage`, `user_sessions`, and
+two tables — `projects`, `usage_events` — missing from the doc entirely). The
+columns already existed live from earlier ad-hoc migrations; only the
+documentation was stale, the same class of problem as Bug #23, recurring a
+second time. Corrected the comment block to match the live schema — 9
+previously-undocumented `rfi_register` columns (`created_at`, `priority`,
+`response_required_by`, `question`, `reference_doc`, `cost_impact`,
+`schedule_impact`, `environmental_impact`, `public_affairs_impact`,
+`client_id`, `document_path`, `document_generated_at`). Then added
+`instructions` and `note` columns (text, nullable) to `rfi_register` via
+`ALTER TABLE` — live at this point but not yet written by any code.
+Files: app.py, .claude/CLAUDE.md
+
+**2. Write path — Save/Generate write full RFI content to the register** ✅ RESOLVED
+`upsert_project_register_rows` wrote only the original small field set
+(sheet reference, category, priority, description, status, date). Every
+column added in the schema catch-up above — question, reference/impact
+fields, `client_id`, `instructions`, `note` — was live in the database but
+never populated, so the register held a status tracker, not the RFI's actual
+content.
+Decision — map field names rather than rename them: `ui_generate.py`'s
+in-memory dicts already used short internal names (`sheets`, `cost`, `env`,
+`pub`) established by the Save/View/Edit/Generate rebuild in Session 3; the
+DB columns use longer, self-describing names (`sheet_reference`,
+`cost_impact`, `environmental_impact`, `public_affairs_impact`). Renaming the
+in-memory keys to match the DB would have touched every read site across
+View, Edit, and Generate for no behavioural gain; instead a single
+`_register_content_fields(iss)` helper in data_layer.py maps the short keys
+onto the DB column names in one place, at the write boundary — the same
+shape of translation the reopen-loader (change 4) later runs in reverse.
+Added `client_id`: the Save handler resolves the currently selected
+recipient's index into `clients[idx].get("id") or f"pos{idx}"` — the exact
+fallback established for stable client ids in Tab 2 above — and writes that
+into the new `client_id` column. This has no foreign key to a clients table
+because there is no clients table — recipients are a `clients_data` JSON
+array on the `projects` row (Tab 2's model, unchanged), not a normalised
+table Postgres could reference. `client_id` is a plain `text` column matched
+by convention against that JSON array's `id` field, not by referential
+integrity, which is exactly what change 4 below has to account for
+defensively.
+Added `mark_register_document_generated(pid, rfi_num, email, document_path)`:
+a narrow `.update()`, separate from the upsert, touching only
+`document_path`/`document_generated_at`, called once — only after the Word
+document has been generated and successfully uploaded. `document_path` stays
+NULL for every RFI until that exact moment; it is later read as the signal
+"has this RFI already been sent" by both the collision guard and the reopen
+loader.
+Files: data_layer.py, ui_generate.py
+
+**3. Collision guard — stop RFI-number collisions and orphaned rows** ✅ RESOLVED
+`upsert_project_register_rows` upserts on `(email, project_id, rfi_number)`.
+Two related failure modes existed with no guard: saving under a number that
+already belonged to a different RFI silently overwrote it with no warning;
+and changing a saved RFI's number created a new row under the new number,
+leaving the original row behind under the old number, permanently orphaned.
+Decision on renumbering — refuse the change once a document has already been
+generated for that RFI: once `document_path` is non-null, the number has
+been communicated to the recipient in an actual Word document, so silently
+letting that number mean something else afterward would break the paper
+trail between what was sent and what the register shows. If no document
+exists yet, the number is still free to change — the new row is written
+first, then the stale old-numbered row is deleted, so no orphan is left
+behind. That delete is not swallowed: `delete_project_register_row` returns
+`bool` (matching the existing contract of `delete_project_snapshot`, not the
+fire-and-forget pattern of `update_project_register_status`), and the caller
+checks it explicitly — if the cleanup delete fails, the user gets a hard
+error naming both RFI numbers and is told to remove the stale one manually,
+rather than a warning sitting quietly next to a success message.
+Added `t5_new_loaded_row_id_{pid}` — one new session-state key holding the
+register row's `id` (uuid PK) that the open form corresponds to, or `None`
+for a brand-new, never-saved RFI. Deliberately the row's `id`, not its
+`rfi_number` — the number is exactly the value that can change and collide,
+so it can't double as a stable reference to "the row this session owns."
+Reuses existing state-transition points (New Manual RFI, AI-scan card click,
+Cancel's existing generic key-wipe) rather than adding new ones, and became
+the foundation change 4 below builds on.
+Files: data_layer.py, ui_generate.py
+
+**4. Reopen a saved RFI from the register** ✅ RESOLVED
+An RFI vanished from Tab 5 the instant its document was generated — the left
+panel only ever listed pending AI-scan issues, filtered to hide anything with
+a matching `.docx`. There was no way to find, view, edit, or regenerate a
+saved RFI, and no way to open a manually-created RFI with no AI-scan
+counterpart at all, even though the register row already held everything
+needed.
+Fix: Added a "Saved RFIs" section to the same left panel, built directly from
+`reg_rows` (no new query) — a card per register row showing number, subject,
+and a Sent/Draft badge, opening straight into View mode. A new
+`_register_row_to_record(row, clients)` maps a register row into the exact
+shape `t5_new_record_{pid}` already has, so View, Edit, and Generate need no
+changes — the mapping-not-renaming approach from change 2, run in reverse
+(`sheet_reference` → `sheets`, etc.).
+Two conversions were mandatory: `response_required_by` comes back from
+Postgres as an ISO string, but Edit mode assigns it straight into a
+`date_input` widget's session key with no parsing, which raises
+`StreamlitAPIException` the moment a string reaches it — converted with
+`date.fromisoformat()` in a `try/except`, the same pattern already used on
+the AI-scan prefill path. And `sheet_reference` (DB column) had to be read
+back into `sheets` (every in-memory dict's key) — the same map from change 2,
+run backward.
+Decision on a deleted recipient — block regeneration, don't substitute:
+because `client_id` has no foreign key (see change 2), a recipient deleted
+from Tab 2 after an RFI was addressed to them leaves that RFI's `client_id`
+pointing at nothing. The existing pattern elsewhere in the file silently
+clamps an out-of-range client index to `0` — safe when a record was just
+built live from the current client list seconds ago, since there is no
+stored intent to compare against, but wrong here: `client_id` is a specific,
+stored fact about who this RFI was addressed to, and substituting whichever
+company happens to sit at index 0 would let Generate silently produce a
+document addressed to a company the RFI was never meant for. Instead the
+mapper leaves `client_idx` as `None` and sets a `client_missing` flag when no
+current client matches; View shows a plain warning naming the stored id
+instead of a company name, and Generate refuses to run until the user goes
+through Edit and explicitly saves a recipient — which naturally clears the
+flag, since the Save handler always rebuilds the record fresh from the live
+form.
+Also traced and fixed, since this reopen feature is what first makes it
+reachable: regenerating an RFI that already has a document produces a
+distinct filename if done on a different calendar day (the filename embeds
+today's date) — a second `.docx` would otherwise sit in storage, both
+claiming to be the same RFI number, with the register's `document_path`
+pointing at only the newer one. Fix: after a regeneration succeeds, if the
+row being reopened already had a `document_path` different from the new
+filename, the superseded file is deleted (local + cloud) — write-new-then-
+delete-old, the same order and the same explicit-failure-reporting pattern as
+the collision guard's renumber cleanup, via a new `delete_project_document`
+helper matching `delete_project_snapshot`'s contract.
+Files: data_layer.py, ui_generate.py
