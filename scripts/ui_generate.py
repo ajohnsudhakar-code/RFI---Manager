@@ -12,7 +12,7 @@ from data_layer import (
     FREE_LIMIT, _secret,
     load_project_cfg, load_project_approved, load_project_clients,
     proj_snapshots_dir, proj_output_dir, proj_dir,
-    upsert_project_register_rows, resolve_pdf_path,
+    upsert_project_register_rows, mark_register_document_generated, resolve_pdf_path,
     upload_project_document, sync_snapshots_from_supabase,
     upload_project_snapshot, delete_project_snapshot, load_project_register,
     load_rfi_templates, save_rfi_templates,
@@ -703,6 +703,12 @@ def render_tab_generate(email: str):
                                             )
 
                         if _snap_rename_ok:
+                            _ci_save = st.session_state.get(f"t5_new_client_idx_{pid}", 0)
+                            if not isinstance(_ci_save, int) or _ci_save < 0 or _ci_save >= len(clients):
+                                _ci_save = 0
+                            _client_id_save = (
+                                (clients[_ci_save].get("id") or f"pos{_ci_save}") if clients else ""
+                            )
                             _new_issue = {
                                 "rfi_number":            _num,
                                 "description":           _subj,
@@ -716,6 +722,9 @@ def render_tab_generate(email: str):
                                 "schedule_impact":       st.session_state.get(f"t5_new_schedule_{pid}", "TBD"),
                                 "environmental_impact":  st.session_state.get(f"t5_new_env_{pid}", "TBD"),
                                 "public_affairs_impact": st.session_state.get(f"t5_new_pub_{pid}", "TBD"),
+                                "client_id":             _client_id_save,
+                                "instructions":          st.session_state.get(f"t5_new_instructions_{pid}", ""),
+                                "note":                  st.session_state.get(f"t5_new_note_{pid}", ""),
                             }
                             upsert_project_register_rows(pid, [_new_issue], pcfg.get("name", ""), email)
                             st.session_state[f"t5_new_record_{pid}"] = {
@@ -1016,6 +1025,9 @@ def render_tab_generate(email: str):
                                     _ndoc_bytes = _nfh.read()
                                 if not upload_project_document(email, pid, os.path.basename(out_path), _ndoc_bytes):
                                     st.warning("⚠ Cloud backup failed — document saved locally. Check your connection.")
+                                else:
+                                    mark_register_document_generated(
+                                        pid, _num, email, os.path.basename(out_path))
                                 st.session_state[f"t5_new_last_doc_{pid}"] = out_path
                                 st.session_state[f"t5_last_generated_{pid}"] = out_path
                                 if isinstance(_sel_rfi, int):

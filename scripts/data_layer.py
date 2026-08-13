@@ -5,7 +5,7 @@ Imported by app.py and every ui_*.py tab module.
 
 import json, os, re, io, sys, uuid, shutil, traceback
 from pathlib import Path
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 # ── Optional: Supabase ────────────────────────────────────────────────────────
 try:
@@ -1153,6 +1153,22 @@ def load_project_register(pid: str, email: str = "") -> list:
         return []
 
 
+def _register_content_fields(iss: dict) -> dict:
+    """Map the extra RFI-detail keys an issue dict may carry onto their
+    rfi_register column names. Tolerant of any key being absent."""
+    return {
+        "question":              iss.get("question", ""),
+        "reference_doc":         iss.get("reference_doc", ""),
+        "cost_impact":           iss.get("cost_impact", "TBD"),
+        "schedule_impact":       iss.get("schedule_impact", "TBD"),
+        "environmental_impact":  iss.get("environmental_impact", "TBD"),
+        "public_affairs_impact": iss.get("public_affairs_impact", "TBD"),
+        "client_id":             iss.get("client_id", ""),
+        "instructions":          iss.get("instructions", ""),
+        "note":                  iss.get("note", ""),
+    }
+
+
 def upsert_project_register_rows(pid: str, approved: list, proj_name: str, email: str = ""):
     """Add/update register rows from an approved list; preserve existing statuses."""
     rows   = load_project_register(pid, email)
@@ -1177,6 +1193,7 @@ def upsert_project_register_rows(pid: str, approved: list, proj_name: str, email
             "status":               "Open",
             "date_raised":          today,
         }
+        row.update(_register_content_fields(iss))
         if rn in by_rfi:
             row["status"] = rows[by_rfi[rn]].get("status", "Open")
             rows[by_rfi[rn]] = row
@@ -1200,7 +1217,7 @@ def upsert_project_register_rows(pid: str, approved: list, proj_name: str, email
                     and _rbd_raw.strip()
                     and _rbd_raw.strip().lower() != "none"
                 ) else None
-                sb.table("rfi_register").upsert({
+                _payload = {
                     "email":                email,
                     "project_id":           pid,
                     "project_name":         proj_name,
@@ -1212,10 +1229,35 @@ def upsert_project_register_rows(pid: str, approved: list, proj_name: str, email
                     "description":          iss.get("description", "")[:500],
                     "status":               _status,
                     "date_raised":          today,
-                }, on_conflict="email,project_id,rfi_number").execute()
+                }
+                _payload.update(_register_content_fields(iss))
+                sb.table("rfi_register").upsert(
+                    _payload, on_conflict="email,project_id,rfi_number"
+                ).execute()
         except Exception as e:
             _log_error("upsert_project_register_rows[supabase]", e)
             _warn("Could not sync register to database. Working in offline mode.")
+
+
+def mark_register_document_generated(pid: str, rfi_num: int, email: str, document_path: str):
+    """Record where a generated document was uploaded. Only called after a
+    successful generate + upload — never touches document_path/
+    document_generated_at otherwise, so they stay NULL until then."""
+    sb = _get_storage_client()
+    if sb and email and pid:
+        try:
+            (sb.table("rfi_register")
+               .update({
+                   "document_path": document_path,
+                   "document_generated_at": datetime.now(timezone.utc).isoformat(),
+               })
+               .eq("email", email)
+               .eq("project_id", pid)
+               .eq("rfi_number", rfi_num)
+               .execute())
+        except Exception as e:
+            _log_error("mark_register_document_generated[supabase]", e)
+            _warn("Could not record document link in the register. The document itself was saved successfully.")
 
 
 def update_project_register_status(pid: str, rfi_num: int, status: str, email: str = ""):
