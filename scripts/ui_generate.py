@@ -31,11 +31,13 @@ def _default_kwarg(key: str, param: str, value):
     return {} if key in st.session_state else {param: value}
 
 
-# ── Local snap helpers ────────────────────────────────────────────────────────
-
-def _local_snaps(snaps_dir: Path, rfi_num: int, max_snaps: int) -> list:
-    found = sorted(snaps_dir.glob(f"RFI_{rfi_num:03d}_*_snap*.png"))
-    return [f.name for f in found[:max_snaps]]
+def _md_escape(text: str) -> str:
+    """Escape GitHub-flavored-Markdown special characters so free text
+    (an RFI subject) renders literally inside a markdown-parsed st.button
+    label instead of being interpreted as formatting."""
+    for ch in "\\*_`[]#:":
+        text = text.replace(ch, "\\" + ch)
+    return text
 
 
 def _register_row_to_record(row: dict, clients: list) -> dict:
@@ -177,6 +179,28 @@ def render_tab_generate(email: str):
             'margin-bottom:8px;">RFI List</div>',
             unsafe_allow_html=True)
 
+        # Scoped to keys prefixed "t5_lp_row_" — unique to this list, cannot
+        # affect any other button in the app.
+        st.markdown(
+            '<style>'
+            '.st-key-t5_lp_rows_scope [data-testid="stVerticalBlock"] { gap:2px !important; }'
+            '[class*="st-key-t5_lp_row_"] button { '
+            'display:flex !important; justify-content:flex-start !important; '
+            'text-align:left !important; padding:4px 10px !important; '
+            'min-height:0 !important; height:auto !important; '
+            'border:none !important; border-bottom:1px solid #f0f0f0 !important; '
+            'border-radius:0 !important; background:transparent !important; '
+            'box-shadow:none !important; color:#374151; }'
+            '[class*="st-key-t5_lp_row_"] button:hover { '
+            'background:#f3f4f6 !important; box-shadow:none !important; transform:none !important; }'
+            '[class*="st-key-t5_lp_row_"] button > div { '
+            'justify-content:flex-start !important; width:100% !important; }'
+            '[class*="st-key-t5_lp_row_"] button p { '
+            'text-align:left !important; white-space:nowrap !important; '
+            'overflow:hidden !important; text-overflow:ellipsis !important; }'
+            '</style>',
+            unsafe_allow_html=True)
+
         if st.button("+ New Manual RFI", key=f"t5_lp_new_{pid}",
                      type="primary", use_container_width=True):
             st.session_state[f"t5_selected_rfi_{pid}"] = "new"
@@ -195,119 +219,163 @@ def render_tab_generate(email: str):
             except (TypeError, ValueError):
                 continue
 
-        _lp_cards_shown = 0
+        # ── Unified row list: pending AI issues + register rows ─────────────
+        _lp_rows = []
         for _lp_issue in approved:
             _lp_rfi_n = get_rfi_num(_lp_issue, 1)
             if _lp_rfi_n in _registered_nums:
                 continue
-            _lp_cards_shown += 1
-            _lp_snaps = _local_snaps(snaps_dir, _lp_rfi_n, max_snaps)
-            _lp_desc  = _lp_issue.get("summary") or _lp_issue.get("description", "")
-            _lp_short = _lp_desc[:80] + ("…" if len(_lp_desc) > 80 else "")
-            _lp_snap_lbl = f"🖼 {len(_lp_snaps)}" if _lp_snaps else "⚠ No snaps"
-            _lp_snap_bg  = "#f0fdf4" if _lp_snaps else "#fffbeb"
-            _lp_snap_bd  = "#bbf7d0" if _lp_snaps else "#fde68a"
-            _lp_snap_fg  = "#15803d" if _lp_snaps else "#92400e"
-            st.markdown(
-                f'<div style="border:1px solid #e5e7eb;border-radius:6px;'
-                f'padding:8px 10px;margin-bottom:4px;">'
-                f'<div style="font-size:12px;font-weight:700;color:#1d4ed8;">'
-                f'RFI-{_lp_rfi_n:03d}</div>'
-                f'<div style="font-size:11px;color:#374151;margin:2px 0;">'
-                f'{_lp_short}</div>'
-                f'<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">'
-                f'<span style="background:#eff6ff;border:1px solid #bfdbfe;'
-                f'color:#1d4ed8;font-size:10px;padding:1px 6px;border-radius:8px;">AI</span>'
-                f'<span style="background:{_lp_snap_bg};border:1px solid {_lp_snap_bd};'
-                f'color:{_lp_snap_fg};font-size:10px;padding:1px 6px;border-radius:8px;">'
-                f'{_lp_snap_lbl}</span>'
-                f'</div></div>',
-                unsafe_allow_html=True)
-            if st.button("→ Create RFI", key=f"t5_lp_ai_{_lp_rfi_n}_{pid}",
-                         use_container_width=True):
-                st.session_state[f"t5_selected_rfi_{pid}"] = _lp_rfi_n
-                st.session_state[f"t5_new_saved_{pid}"] = False
-                st.session_state.pop(f"t5_new_record_{pid}", None)
-                _lp_matched_row = next(
-                    (r for r in reg_rows if r.get("rfi_number") == _lp_rfi_n), None
-                )
-                st.session_state[f"t5_new_loaded_row_id_{pid}"] = (
-                    _lp_matched_row.get("id") if _lp_matched_row else None
-                )
-                if st.session_state.get(f"t5_new_prefilled_rfi_{pid}") != _lp_rfi_n:
-                    _PRIORITY_OPTS_T5 = ["Normal", "Critical", "High", "Low"]
-                    _CATEGORY_OPTS_T5 = [
-                        "Missing Information", "Conflict Between Sheets",
-                        "Coordination Issue", "Ambiguous Detail",
-                        "Specification Conflict", "Structural Concern",
-                        "Architectural Concern", "Services Conflict",
-                    ]
-                    st.session_state[f"t5_new_subject_{pid}"]  = (
-                        _lp_issue.get("summary") or _lp_issue.get("description", "")[:100]
-                    )
-                    st.session_state[f"t5_new_question_{pid}"] = _lp_issue.get("description", "")
-                    st.session_state[f"t5_new_sheets_{pid}"]   = _lp_issue.get("sheets", "")
-                    _pri = _lp_issue.get("priority", "")
-                    if _pri in _PRIORITY_OPTS_T5:
-                        st.session_state[f"t5_new_priority_{pid}"] = _pri
-                    _cat = _lp_issue.get("category", "")
-                    if _cat in _CATEGORY_OPTS_T5:
-                        st.session_state[f"t5_new_category_{pid}"] = _cat
-                    _rbd_str = _lp_issue.get("response_required_by", "")
-                    if _rbd_str:
-                        try:
-                            st.session_state[f"t5_new_rbd_{pid}"] = date.fromisoformat(str(_rbd_str))
-                        except (ValueError, TypeError):
-                            pass
-                    st.session_state[f"t5_new_prefilled_rfi_{pid}"] = _lp_rfi_n
-                st.rerun()
+            _lp_rows.append({
+                "kind": "pending",
+                "num": _lp_rfi_n,
+                "subject": _lp_issue.get("summary") or _lp_issue.get("description", ""),
+                "due": _lp_issue.get("response_required_by"),
+                "ref": _lp_issue,
+            })
+        for _sv_row in reg_rows:
+            _sv_num = _sv_row.get("rfi_number")
+            if _sv_num is None:
+                continue
+            _lp_rows.append({
+                "kind": "generated" if _sv_row.get("document_path") else "draft",
+                "num": _sv_num,
+                "subject": _sv_row.get("description", ""),
+                "due": _sv_row.get("response_required_by"),
+                "ref": _sv_row,
+            })
+        _lp_rows.sort(key=lambda _r: _r["num"])
 
-        if _lp_cards_shown == 0:
-            st.markdown(
-                '<div style="font-size:11px;color:#6b7280;padding:8px 0;">'
-                'No pending RFIs. Find your documents in Previously generated '
-                'documents below.</div>',
-                unsafe_allow_html=True)
+        _lp_counts = {
+            "all": len(_lp_rows),
+            "pending": sum(1 for _r in _lp_rows if _r["kind"] == "pending"),
+            "draft": sum(1 for _r in _lp_rows if _r["kind"] == "draft"),
+            "generated": sum(1 for _r in _lp_rows if _r["kind"] == "generated"),
+        }
+        _lp_folder_labels = {
+            "all": f'All ({_lp_counts["all"]})',
+            "pending": f'To raise ({_lp_counts["pending"]})',
+            "draft": f'Draft ({_lp_counts["draft"]})',
+            "generated": f'Generated ({_lp_counts["generated"]})',
+        }
+        _lp_folder_keys = ["all", "pending", "draft", "generated"]
+        st.session_state.setdefault(f"t5_lp_filter_{pid}", "all")
+        _lp_active_filter = st.radio(
+            "Folder", _lp_folder_keys,
+            format_func=lambda _k: _lp_folder_labels[_k],
+            horizontal=True, label_visibility="collapsed",
+            key=f"t5_lp_filter_{pid}",
+        )
 
-        # ── Saved RFIs (register rows — reopen for view/edit/regenerate) ─────
-        if reg_rows:
-            st.markdown(
-                '<div style="font-size:12px;font-weight:700;color:#374151;'
-                'margin-top:16px;margin-bottom:8px;">Saved RFIs</div>',
-                unsafe_allow_html=True)
-            for _sv_row in reg_rows:
-                _sv_num  = _sv_row.get("rfi_number")
-                if _sv_num is None:
-                    continue
-                _sv_desc  = _sv_row.get("description", "")
-                _sv_short = _sv_desc[:80] + ("…" if len(_sv_desc) > 80 else "")
-                _sv_has_doc = bool(_sv_row.get("document_path"))
-                _sv_badge_lbl = "✓ Sent" if _sv_has_doc else "Draft"
-                _sv_badge_bg  = "#f0fdf4" if _sv_has_doc else "#f9fafb"
-                _sv_badge_bd  = "#bbf7d0" if _sv_has_doc else "#e5e7eb"
-                _sv_badge_fg  = "#15803d" if _sv_has_doc else "#6b7280"
-                st.markdown(
-                    f'<div style="border:1px solid #e5e7eb;border-radius:6px;'
-                    f'padding:8px 10px;margin-bottom:4px;">'
-                    f'<div style="font-size:12px;font-weight:700;color:#1d4ed8;">'
-                    f'RFI-{_sv_num:03d}</div>'
-                    f'<div style="font-size:11px;color:#374151;margin:2px 0;">'
-                    f'{_sv_short}</div>'
-                    f'<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">'
-                    f'<span style="background:{_sv_badge_bg};border:1px solid {_sv_badge_bd};'
-                    f'color:{_sv_badge_fg};font-size:10px;padding:1px 6px;border-radius:8px;">'
-                    f'{_sv_badge_lbl}</span>'
-                    f'</div></div>',
-                    unsafe_allow_html=True)
-                if st.button("→ Open RFI", key=f"t5_lp_reg_{_sv_num}_{pid}",
+        st.session_state.setdefault(f"t5_lp_query_{pid}", "")
+        with st.form(f"t5_lp_search_form_{pid}", clear_on_submit=False):
+            _lp_search_col, _lp_search_btn_col = st.columns([3, 1])
+            with _lp_search_col:
+                _lp_query_input = st.text_input(
+                    "Search", value=st.session_state[f"t5_lp_query_{pid}"],
+                    label_visibility="collapsed",
+                    placeholder="Search number or subject…",
+                )
+            with _lp_search_btn_col:
+                _lp_search_submitted = st.form_submit_button(
+                    "Search", use_container_width=True)
+            if _lp_search_submitted:
+                st.session_state[f"t5_lp_query_{pid}"] = _lp_query_input
+
+        _lp_query = st.session_state[f"t5_lp_query_{pid}"].strip()
+        if _lp_query and st.button("× clear search", key=f"t5_lp_clear_{pid}"):
+            st.session_state[f"t5_lp_query_{pid}"] = ""
+            st.rerun()
+
+        _lp_filtered = [
+            _r for _r in _lp_rows
+            if _lp_active_filter == "all" or _r["kind"] == _lp_active_filter
+        ]
+        if _lp_query:
+            _lp_query_lower = _lp_query.lower()
+            _lp_filtered = [
+                _r for _r in _lp_filtered
+                if _lp_query_lower in f'{_r["num"]:03d}' or _lp_query in str(_r["num"])
+                or _lp_query_lower in _r["subject"].lower()
+            ]
+
+        _lp_kind_emoji = {"pending": "🔵", "draft": "🟡", "generated": "🟢"}
+        with st.container(key="t5_lp_rows_scope"):
+            for _row in _lp_filtered:
+                _due = _row["due"]
+                _due_str = str(_due) if _due else ""
+                _subj = _md_escape((_row["subject"] or "")[:200])
+                _label = (
+                    f':gray[RFI-{_row["num"]:03d}   {_lp_kind_emoji[_row["kind"]]}   '
+                    f'{_due_str}   —]   {_subj}'
+                )
+                if st.button(_label, key=f"t5_lp_row_{_row['kind']}_{_row['num']}_{pid}",
                              use_container_width=True):
-                    st.session_state[f"t5_selected_rfi_{pid}"] = _sv_num
-                    st.session_state[f"t5_new_loaded_row_id_{pid}"] = _sv_row.get("id")
-                    st.session_state[f"t5_new_record_{pid}"] = _register_row_to_record(
-                        _sv_row, clients
-                    )
-                    st.session_state[f"t5_new_saved_{pid}"] = True
-                    st.rerun()
+                    if _row["kind"] == "pending":
+                        _lp_issue = _row["ref"]
+                        _lp_rfi_n = _row["num"]
+                        st.session_state[f"t5_selected_rfi_{pid}"] = _lp_rfi_n
+                        st.session_state[f"t5_new_saved_{pid}"] = False
+                        st.session_state.pop(f"t5_new_record_{pid}", None)
+                        _lp_matched_row = next(
+                            (r for r in reg_rows if r.get("rfi_number") == _lp_rfi_n), None
+                        )
+                        st.session_state[f"t5_new_loaded_row_id_{pid}"] = (
+                            _lp_matched_row.get("id") if _lp_matched_row else None
+                        )
+                        if st.session_state.get(f"t5_new_prefilled_rfi_{pid}") != _lp_rfi_n:
+                            _PRIORITY_OPTS_T5 = ["Normal", "Critical", "High", "Low"]
+                            _CATEGORY_OPTS_T5 = [
+                                "Missing Information", "Conflict Between Sheets",
+                                "Coordination Issue", "Ambiguous Detail",
+                                "Specification Conflict", "Structural Concern",
+                                "Architectural Concern", "Services Conflict",
+                            ]
+                            st.session_state[f"t5_new_subject_{pid}"]  = (
+                                _lp_issue.get("summary") or _lp_issue.get("description", "")[:100]
+                            )
+                            st.session_state[f"t5_new_question_{pid}"] = _lp_issue.get("description", "")
+                            st.session_state[f"t5_new_sheets_{pid}"]   = _lp_issue.get("sheets", "")
+                            _pri = _lp_issue.get("priority", "")
+                            if _pri in _PRIORITY_OPTS_T5:
+                                st.session_state[f"t5_new_priority_{pid}"] = _pri
+                            _cat = _lp_issue.get("category", "")
+                            if _cat in _CATEGORY_OPTS_T5:
+                                st.session_state[f"t5_new_category_{pid}"] = _cat
+                            _rbd_str = _lp_issue.get("response_required_by", "")
+                            if _rbd_str:
+                                try:
+                                    st.session_state[f"t5_new_rbd_{pid}"] = date.fromisoformat(str(_rbd_str))
+                                except (ValueError, TypeError):
+                                    pass
+                            st.session_state[f"t5_new_prefilled_rfi_{pid}"] = _lp_rfi_n
+                        st.rerun()
+                    else:
+                        _sv_row = _row["ref"]
+                        _sv_num = _row["num"]
+                        st.session_state[f"t5_selected_rfi_{pid}"] = _sv_num
+                        st.session_state[f"t5_new_loaded_row_id_{pid}"] = _sv_row.get("id")
+                        st.session_state[f"t5_new_record_{pid}"] = _register_row_to_record(
+                            _sv_row, clients
+                        )
+                        st.session_state[f"t5_new_saved_{pid}"] = True
+                        st.rerun()
+
+        if not _lp_filtered:
+            _lp_empty_msgs = {
+                "all": "No RFIs yet. Find your documents in Previously generated "
+                       "documents below.",
+                "pending": "No RFIs to raise.",
+                "draft": "No drafts.",
+                "generated": "No generated documents.",
+            }
+            _lp_empty_msg = (
+                "No RFIs match your search." if _lp_query
+                else _lp_empty_msgs[_lp_active_filter]
+            )
+            st.markdown(
+                f'<div style="font-size:11px;color:#6b7280;padding:8px 0;">'
+                f'{_lp_empty_msg}</div>',
+                unsafe_allow_html=True)
 
     with _rp_col:
         # ── Setup vars needed by the form ────────────────────────────────────
