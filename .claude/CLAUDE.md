@@ -143,9 +143,8 @@ All source files live in `scripts/`. Each file has ONE job — never put logic i
 - Drawing revision (Rev B upload) wipes all prior AI scan work — no revision management yet
 - Free Supabase tier at usage limits — may cause intermittent failures under load
 - Project IDs are now human-readable slugs e.g. mary-durnal-projects-a3f2 — old proj_001 style IDs exist only for soft-deleted test projects
-- Previously generated documents and left panel RFI hide logic both read from Supabase Storage — survives container restarts
+- Previously generated documents reads from Supabase Storage (`list_project_documents`) — survives container restarts. The left panel's pending-issue exclusion does NOT — since C1 (d894335), it checks `rfi_register` (`reg_rows`) instead of matching Storage filenames. Moving that exclusion off filename matching is what closed the bug where deleting a document made its issue card reappear in the pending list.
 - Local disk used only as session cache for PDFs and snapshots — all structured data writes go to Supabase only
-- `ui_generate.py` lines 404 and 480 — `st.text_input` with empty label — accessibility warning, will become error in future Streamlit versions — fix: add `label_visibility="collapsed"`
 
 ---
 
