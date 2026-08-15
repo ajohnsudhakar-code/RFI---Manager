@@ -171,7 +171,8 @@ def render_tab_generate(email: str):
 
     # ── Two-panel layout ──────────────────────────────────────────────────────────
     st.session_state.setdefault(f"t5_selected_rfi_{pid}", None)
-    _lp_col, _rp_col = st.columns([1, 3])
+    with st.container(key="t5_panel_root"):
+        _lp_col, _rp_col = st.columns([1, 3])
 
     with _lp_col:
         st.markdown(
@@ -198,6 +199,8 @@ def render_tab_generate(email: str):
             '[class*="st-key-t5_lp_row_"] button p { '
             'text-align:left !important; white-space:nowrap !important; '
             'overflow:hidden !important; text-overflow:ellipsis !important; }'
+            '.st-key-t5_panel_root [data-testid="stHorizontalBlock"] > div:first-child { '
+            'max-width:280px !important; }'
             '</style>',
             unsafe_allow_html=True)
 
