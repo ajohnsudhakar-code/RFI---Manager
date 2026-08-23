@@ -510,70 +510,58 @@ def render_tab_generate(email: str):
                 # ── SECTION 2 — RFI Content ───────────────────────────────────
                 st.markdown('<div class="sec-lbl" style="margin-top:16px;">RFI Content</div>',
                             unsafe_allow_html=True)
-                _subj_col, _subj_ai_col = st.columns([5, 1])
-                with _subj_col:
-                    st.text_input("Subject *", key=f"t5_new_subject_{pid}")
-                with _subj_ai_col:
-                    st.markdown("<div style='margin-top:28px;'></div>",
-                                unsafe_allow_html=True)
-                    if st.button("Format\nwith AI", key=f"t5_new_ai_subj_{pid}",
-                                 use_container_width=True):
-                        _subj_api_key = _secret("ANTHROPIC_API_KEY")
-                        if not st.session_state.get(f"t5_new_subject_{pid}", "").strip():
-                            st.warning("Enter a subject first before formatting.")
-                        elif not _subj_api_key:
-                            st.warning("AI formatting is not configured. Check ANTHROPIC_API_KEY in secrets.")
+                st.text_input("Subject *", key=f"t5_new_subject_{pid}")
+                if st.button("Format with AI", key=f"t5_new_ai_subj_{pid}"):
+                    _subj_api_key = _secret("ANTHROPIC_API_KEY")
+                    if not st.session_state.get(f"t5_new_subject_{pid}", "").strip():
+                        st.warning("Enter a subject first before formatting.")
+                    elif not _subj_api_key:
+                        st.warning("AI formatting is not configured. Check ANTHROPIC_API_KEY in secrets.")
+                    else:
+                        try:
+                            import anthropic as _anth_subj
+                            _subj_ai_client = _anth_subj.Anthropic(api_key=_subj_api_key)
+                            _subj_ai_resp = _subj_ai_client.messages.create(
+                                model="claude-opus-4-6",
+                                max_tokens=200,
+                                system=(
+                                    "You are a construction RFI writing assistant. Rewrite the engineer's "
+                                    "rough subject into a concise one-line professional RFI subject. "
+                                    "Return only the rewritten subject line, nothing else."
+                                ),
+                                messages=[{"role": "user", "content": st.session_state.get(f"t5_new_subject_{pid}", "")}],
+                            )
+                            st.session_state[f"t5_new_subject_{pid}"] = _subj_ai_resp.content[0].text
+                        except Exception as _subj_ai_err:
+                            st.warning(f"AI formatting error: {_subj_ai_err}")
                         else:
-                            try:
-                                import anthropic as _anth_subj
-                                _subj_ai_client = _anth_subj.Anthropic(api_key=_subj_api_key)
-                                _subj_ai_resp = _subj_ai_client.messages.create(
-                                    model="claude-opus-4-6",
-                                    max_tokens=200,
-                                    system=(
-                                        "You are a construction RFI writing assistant. Rewrite the engineer's "
-                                        "rough subject into a concise one-line professional RFI subject. "
-                                        "Return only the rewritten subject line, nothing else."
-                                    ),
-                                    messages=[{"role": "user", "content": st.session_state.get(f"t5_new_subject_{pid}", "")}],
-                                )
-                                st.session_state[f"t5_new_subject_{pid}"] = _subj_ai_resp.content[0].text
-                            except Exception as _subj_ai_err:
-                                st.warning(f"AI formatting error: {_subj_ai_err}")
-                            else:
-                                st.rerun()
+                            st.rerun()
 
-                _qn_col, _ai_col2 = st.columns([5, 1])
-                with _qn_col:
-                    st.text_area("Question *", key=f"t5_new_question_{pid}", height=160)
-                with _ai_col2:
-                    st.markdown("<div style='margin-top:28px;'></div>",
-                                unsafe_allow_html=True)
-                    if st.button("Format\nwith AI", key=f"t5_new_ai_fmt_{pid}",
-                                 use_container_width=True):
-                        _new_api_key = _secret("ANTHROPIC_API_KEY")
-                        if not _new_api_key:
-                            st.warning("AI formatting is not configured. Check ANTHROPIC_API_KEY in secrets.")
+                st.text_area("Question *", key=f"t5_new_question_{pid}", height=160)
+                if st.button("Format with AI", key=f"t5_new_ai_fmt_{pid}"):
+                    _new_api_key = _secret("ANTHROPIC_API_KEY")
+                    if not _new_api_key:
+                        st.warning("AI formatting is not configured. Check ANTHROPIC_API_KEY in secrets.")
+                    else:
+                        try:
+                            import anthropic as _anth
+                            _new_ai_client = _anth.Anthropic(api_key=_new_api_key)
+                            _new_ai_resp = _new_ai_client.messages.create(
+                                model="claude-opus-4-6",
+                                max_tokens=1000,
+                                system=(
+                                    "You are a construction RFI writing assistant. Rewrite the "
+                                    "engineer's rough notes into a clear, professional RFI question "
+                                    "using formal construction industry language. Keep it factual. "
+                                    "Return only the rewritten question text, nothing else."
+                                ),
+                                messages=[{"role": "user", "content": st.session_state.get(f"t5_new_question_{pid}", "")}],
+                            )
+                            st.session_state[f"t5_new_question_{pid}"] = _new_ai_resp.content[0].text
+                        except Exception as _new_ai_err:
+                            st.warning(f"AI formatting error: {_new_ai_err}")
                         else:
-                            try:
-                                import anthropic as _anth
-                                _new_ai_client = _anth.Anthropic(api_key=_new_api_key)
-                                _new_ai_resp = _new_ai_client.messages.create(
-                                    model="claude-opus-4-6",
-                                    max_tokens=1000,
-                                    system=(
-                                        "You are a construction RFI writing assistant. Rewrite the "
-                                        "engineer's rough notes into a clear, professional RFI question "
-                                        "using formal construction industry language. Keep it factual. "
-                                        "Return only the rewritten question text, nothing else."
-                                    ),
-                                    messages=[{"role": "user", "content": st.session_state.get(f"t5_new_question_{pid}", "")}],
-                                )
-                                st.session_state[f"t5_new_question_{pid}"] = _new_ai_resp.content[0].text
-                            except Exception as _new_ai_err:
-                                st.warning(f"AI formatting error: {_new_ai_err}")
-                            else:
-                                st.rerun()
+                            st.rerun()
 
                 _rf1, _rf2 = st.columns(2)
                 with _rf1:
@@ -616,8 +604,7 @@ def render_tab_generate(email: str):
                         height=120,
                         key=f"t5_new_instructions_{pid}",
                     )
-                    if st.button("Format\nwith AI", key=f"t5_new_ai_ins_{pid}",
-                                 use_container_width=True):
+                    if st.button("Format with AI", key=f"t5_new_ai_ins_{pid}"):
                         _ins_api_key = _secret("ANTHROPIC_API_KEY")
                         if not st.session_state.get(f"t5_new_instructions_{pid}", "").strip():
                             st.warning("Enter instructions first before formatting.")
@@ -692,8 +679,7 @@ def render_tab_generate(email: str):
                         height=120,
                         key=f"t5_new_note_{pid}",
                     )
-                    if st.button("Format\nwith AI", key=f"t5_new_ai_note_{pid}",
-                                 use_container_width=True):
+                    if st.button("Format with AI", key=f"t5_new_ai_note_{pid}"):
                         _note_api_key = _secret("ANTHROPIC_API_KEY")
                         if not st.session_state.get(f"t5_new_note_{pid}", "").strip():
                             st.warning("Enter a note first before formatting.")
@@ -760,18 +746,23 @@ def render_tab_generate(email: str):
                 st.markdown(
                     '<div class="sec-lbl" style="margin-top:16px;">Impact Assessment</div>',
                     unsafe_allow_html=True)
-                _ni1, _ni2, _ni3, _ni4 = st.columns(4)
+                _ni1, _ni2 = st.columns(2)
                 with _ni1:
                     st.radio("Cost Impact",     ["TBD", "Yes", "No"], key=f"t5_new_cost_{pid}",
+                              horizontal=True,
                               **_default_kwarg(f"t5_new_cost_{pid}", "index", 0))
                 with _ni2:
                     st.radio("Schedule Impact", ["TBD", "Yes", "No"], key=f"t5_new_schedule_{pid}",
+                              horizontal=True,
                               **_default_kwarg(f"t5_new_schedule_{pid}", "index", 0))
+                _ni3, _ni4 = st.columns(2)
                 with _ni3:
                     st.radio("Environmental",   ["TBD", "Yes", "No"], key=f"t5_new_env_{pid}",
+                              horizontal=True,
                               **_default_kwarg(f"t5_new_env_{pid}", "index", 0))
                 with _ni4:
                     st.radio("Public Affairs",  ["TBD", "Yes", "No"], key=f"t5_new_pub_{pid}",
+                              horizontal=True,
                               **_default_kwarg(f"t5_new_pub_{pid}", "index", 0))
 
                 # ── SECTION 5 — Attachments ───────────────────────────────────
