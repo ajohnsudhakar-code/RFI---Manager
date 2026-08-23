@@ -795,6 +795,68 @@ Save → View → Generate path automatically.
 
 ## FIXED
 
+### ✅ Three CSS rules that never worked — same-element selector bug
+**Fixed:** 23 Aug 2026 — commit dce22e0
+**The mistake:** `st.container(key="X")` puts the `st-key-X` class and
+`data-testid="stVerticalBlock"` on the SAME element, not on parent and
+child. So `.st-key-X [data-testid="stVerticalBlock"]` — a descendant
+selector — matches nothing, because a descendant combinator excludes the
+element itself.
+**Three rules in ui_generate.py had this bug:**
+- the template row flex rule — never applied, buttons stacked instead of
+  sitting adjacent
+- the btnrow/saverow flex rule — never applied, so "Format with AI" and
+  "Save as template" were silently stacked vertically. Shipped and passed
+  visual review, because two stacked buttons do not look broken.
+- `.st-key-t5_lp_rows_scope [data-testid="stVerticalBlock"] { gap:2px }` —
+  inert since the day it was written, in the left panel RFI list
+**How it was found:** four attempts at the template row failed, each
+assuming the same wrong DOM structure. The loop broke when Claude Code
+installed Playwright, rendered the real structure, and read
+`getComputedStyle` instead of guessing at another selector.
+**The rule going forward:** `.st-key-X [data-testid=...]` is only correct
+when there is a genuinely nested block inside the keyed container — for
+example `t5_panel_root` and `t5_heading_row`, which wrap an `st.columns()`
+call. When the keyed container holds only flat widgets, target
+`.st-key-X` directly with no descendant hop.
+**Why it matters beyond CSS:** these rules ran, did nothing, and looked
+acceptable. Same failure shape as the `track_usage` RLS bug and the P0
+about save functions reporting false success. Silent failure passes every
+check made by eye.
+
+### ✅ Tab 5 form capped at 900px
+**Fixed:** 23 Aug 2026 (commit 1c1cf66)
+Nothing constrained `_rp_col`, so the form stretched to the monitor. One
+CSS rule on the last child of the panel_root horizontal block. Biggest
+single visual improvement of the session for two lines of code. Note that
+several column ratios that looked broken turned out to be fine once the
+container had a ceiling — the ratios were never the problem.
+
+### ✅ Format with AI buttons unified
+**Fixed:** 23 Aug 2026 (commit 71eec01)
+Four buttons, two different layouts — beside the field for Subject and
+Question with a hand-written `margin-top:28px` spacer faking alignment,
+below the field for Instructions and Note. Now all four sit below their
+field, content-sized, single-line label. The `[5,1]` column split existed
+only to place the button, so removing it gave Subject and Question the
+full width.
+
+### ✅ Impact Assessment made horizontal
+**Fixed:** 23 Aug 2026 (commit 71eec01)
+Four radios with no `horizontal=True`, three options stacked in each
+quarter-width column. Now horizontal, in a 2x2 arrangement — 4-across was
+checked and rejected because three options plus dots need more than the
+~210px a quarter column gives.
+
+### ✅ Saved templates rebuilt
+**Fixed:** 23 Aug 2026 (commit dce22e0)
+Templates now show a one-line preview of their actual text, have a delete
+button with two-click confirm, and are saved via a "Save as template"
+button beside Format with AI rather than a permanent name field buried in
+the panel. Expander label shows the count. Delete needed no new
+data_layer function — templates are one JSON blob, so it is the same
+load/mutate/save the Save handler already does.
+
 ### ✅ Tab 5 left panel sprawled to full page width
 **Fixed:** 23 Aug 2026 (`09a5cfd`)
 The left panel in Tab 5 had no width constraint, so on a wide screen it
