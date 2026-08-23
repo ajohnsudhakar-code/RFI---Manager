@@ -237,6 +237,8 @@ def render_tab_generate(email: str):
             'overflow:hidden !important; text-overflow:ellipsis !important; }'
             '.st-key-t5_panel_root [data-testid="stHorizontalBlock"] > div:first-child { '
             'max-width:280px !important; }'
+            '.st-key-t5_panel_root [data-testid="stHorizontalBlock"] > div:last-child { '
+            'max-width:900px !important; }'
             '.st-key-t5_panel_root [data-testid="stFormSubmitButton"] button p { '
             'white-space:nowrap !important; }'
             '.st-key-t5_heading_row [data-testid="stHorizontalBlock"] > div:first-child { '
