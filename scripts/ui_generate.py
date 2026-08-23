@@ -220,7 +220,7 @@ def render_tab_generate(email: str):
         # affect any other button in the app.
         st.markdown(
             '<style>'
-            '.st-key-t5_lp_rows_scope [data-testid="stVerticalBlock"] { gap:2px !important; }'
+            '.st-key-t5_lp_rows_scope { gap:2px !important; }'
             '[class*="st-key-t5_lp_row_"] button { '
             'display:flex !important; justify-content:flex-start !important; '
             'text-align:left !important; padding:4px 10px !important; '
@@ -249,6 +249,30 @@ def render_tab_generate(email: str):
             'align-items:center !important; }'
             '.st-key-t5_heading_row .stButton button { '
             'height:38px !important; min-height:0 !important; padding:0 10px !important; }'
+            '[class*="st-key-t5_ins_btnrow_"], '
+            '[class*="st-key-t5_note_btnrow_"], '
+            '[class*="st-key-t5_ins_saverow_"], '
+            '[class*="st-key-t5_note_saverow_"] { '
+            'flex-direction:row !important; align-items:center !important; gap:8px !important; }'
+            '[class*="st-key-t5_ins_saverow_"] > div:first-child, '
+            '[class*="st-key-t5_note_saverow_"] > div:first-child { '
+            'flex:1 1 auto !important; min-width:0 !important; }'
+            '[class*="st-key-t5_ins_tmpl_row_"], '
+            '[class*="st-key-t5_note_tmpl_row_"] { '
+            'flex-direction:row !important; align-items:flex-start !important; gap:6px !important; }'
+            '[class*="st-key-t5_ins_tmpl_row_"] > div:first-child, '
+            '[class*="st-key-t5_note_tmpl_row_"] > div:first-child { '
+            'flex:1 1 auto !important; min-width:0 !important; }'
+            '[class*="st-key-t5_ins_tmpl_row_"] small, '
+            '[class*="st-key-t5_note_tmpl_row_"] small { '
+            'display:block !important; white-space:nowrap !important; '
+            'overflow:hidden !important; text-overflow:ellipsis !important; }'
+            '[class*="st-key-t5_new_ins_del_"] button, '
+            '[class*="st-key-t5_new_note_del_"] button { '
+            'color:#dc2626 !important; border-color:#fecaca !important; }'
+            '[class*="st-key-t5_new_ins_load_"] button p, '
+            '[class*="st-key-t5_new_note_load_"] button p { '
+            'white-space:nowrap !important; }'
             '</style>',
             unsafe_allow_html=True)
 
@@ -594,16 +618,15 @@ def render_tab_generate(email: str):
                     '<div class="sec-lbl" style="margin-top:16px;">Instructions and Notes</div>',
                     unsafe_allow_html=True)
 
-                _ins_col, _ins_tmpl_col = st.columns([4, 1.5])
-                with _ins_col:
-                    _ins_stage = f"t5_new_instructions_stage_{pid}"
-                    if _ins_stage in st.session_state:
-                        st.session_state[f"t5_new_instructions_{pid}"] = st.session_state.pop(_ins_stage)
-                    st.text_area(
-                        "Instructions",
-                        height=120,
-                        key=f"t5_new_instructions_{pid}",
-                    )
+                _ins_stage = f"t5_new_instructions_stage_{pid}"
+                if _ins_stage in st.session_state:
+                    st.session_state[f"t5_new_instructions_{pid}"] = st.session_state.pop(_ins_stage)
+                st.text_area(
+                    "Instructions",
+                    height=120,
+                    key=f"t5_new_instructions_{pid}",
+                )
+                with st.container(key=f"t5_ins_btnrow_{pid}"):
                     if st.button("Format with AI", key=f"t5_new_ai_ins_{pid}"):
                         _ins_api_key = _secret("ANTHROPIC_API_KEY")
                         if not st.session_state.get(f"t5_new_instructions_{pid}", "").strip():
@@ -629,32 +652,16 @@ def render_tab_generate(email: str):
                                 st.warning(f"AI formatting error: {_ins_ai_err}")
                             else:
                                 st.rerun()
-                with _ins_tmpl_col:
-                    st.markdown("**Saved templates**")
-                    _ins_tmpls = _rfi_templates.get("instructions", {})
-                    if _ins_tmpls:
-                        for _tname, _ttext in _ins_tmpls.items():
-                            _ti1, _ti2 = st.columns([3, 1])
-                            with _ti1:
-                                st.write(_tname)
-                            with _ti2:
-                                if st.button("←", key=f"t5_new_ins_load_{_tname}_{pid}",
-                                             use_container_width=True):
-                                    st.session_state[f"t5_new_instructions_stage_{pid}"] = _ttext
-                                    st.rerun()
-                    else:
-                        st.markdown(
-                            '<span style="font-size:11px;color:#6b7280;">No saved templates yet</span>',
-                            unsafe_allow_html=True)
-                    st.markdown("---")
-                    _ins_tname_col, _ins_save_col = st.columns([3, 1])
-                    with _ins_tname_col:
+                    if st.button("Save as template", key=f"t5_new_ins_savetoggle_{pid}"):
+                        st.session_state[f"t5_new_ins_savebox_{pid}"] = True
+                        st.rerun()
+
+                if st.session_state.get(f"t5_new_ins_savebox_{pid}"):
+                    with st.container(key=f"t5_ins_saverow_{pid}"):
                         st.text_input("", placeholder="Template name...",
                                       key=f"t5_new_ins_tname_{pid}",
                                       label_visibility="collapsed")
-                    with _ins_save_col:
-                        if st.button("Save", key=f"t5_new_ins_save_{pid}",
-                                     use_container_width=True):
+                        if st.button("Save", key=f"t5_new_ins_save_{pid}"):
                             _ins_save_name = st.session_state.get(f"t5_new_ins_tname_{pid}", "").strip()
                             _ins_save_text = st.session_state.get(f"t5_new_instructions_{pid}", "").strip()
                             if not _ins_save_name or not _ins_save_text:
@@ -665,20 +672,57 @@ def render_tab_generate(email: str):
                                 save_rfi_templates(email, _ins_tmpl_data)
                                 st.success(f"Template '{_ins_save_name}' saved.")
                                 st.session_state.pop(f"t5_new_ins_tname_{pid}", None)
+                                st.session_state[f"t5_new_ins_savebox_{pid}"] = False
                                 st.rerun()
+                        if st.button("Cancel", key=f"t5_new_ins_savecancel_{pid}"):
+                            st.session_state[f"t5_new_ins_savebox_{pid}"] = False
+                            st.rerun()
+
+                _ins_tmpls = _rfi_templates.get("instructions", {})
+                with st.expander(f"Saved templates ({len(_ins_tmpls)})", expanded=False):
+                    if _ins_tmpls:
+                        for _tname, _ttext in _ins_tmpls.items():
+                            _ins_preview = " ".join(_ttext.split())
+                            if len(_ins_preview) > 60:
+                                _ins_preview = _ins_preview[:60].rstrip() + "…"
+                            _ins_del_confirm_key = f"t5_new_ins_delconfirm_{_tname}_{pid}"
+                            with st.container(key=f"t5_ins_tmpl_row_{_tname}_{pid}"):
+                                with st.container():
+                                    st.write(_tname)
+                                    st.caption(_md_escape(_ins_preview))
+                                if st.session_state.get(_ins_del_confirm_key):
+                                    if st.button("Yes, delete", key=f"t5_new_ins_delyes_{_tname}_{pid}"):
+                                        _ins_del_data = load_rfi_templates(email)
+                                        _ins_del_data["instructions"].pop(_tname, None)
+                                        save_rfi_templates(email, _ins_del_data)
+                                        st.session_state.pop(_ins_del_confirm_key, None)
+                                        st.rerun()
+                                    if st.button("Cancel", key=f"t5_new_ins_delno_{_tname}_{pid}"):
+                                        st.session_state.pop(_ins_del_confirm_key, None)
+                                        st.rerun()
+                                else:
+                                    if st.button("Use", key=f"t5_new_ins_load_{_tname}_{pid}"):
+                                        st.session_state[f"t5_new_instructions_stage_{pid}"] = _ttext
+                                        st.rerun()
+                                    if st.button("🗑", key=f"t5_new_ins_del_{_tname}_{pid}"):
+                                        st.session_state[_ins_del_confirm_key] = True
+                                        st.rerun()
+                    else:
+                        st.markdown(
+                            '<span style="font-size:11px;color:#6b7280;">No saved templates yet</span>',
+                            unsafe_allow_html=True)
 
                 st.markdown("---")
 
-                _note_col, _note_tmpl_col = st.columns([4, 1.5])
-                with _note_col:
-                    _note_stage = f"t5_new_note_stage_{pid}"
-                    if _note_stage in st.session_state:
-                        st.session_state[f"t5_new_note_{pid}"] = st.session_state.pop(_note_stage)
-                    st.text_area(
-                        "Note",
-                        height=120,
-                        key=f"t5_new_note_{pid}",
-                    )
+                _note_stage = f"t5_new_note_stage_{pid}"
+                if _note_stage in st.session_state:
+                    st.session_state[f"t5_new_note_{pid}"] = st.session_state.pop(_note_stage)
+                st.text_area(
+                    "Note",
+                    height=120,
+                    key=f"t5_new_note_{pid}",
+                )
+                with st.container(key=f"t5_note_btnrow_{pid}"):
                     if st.button("Format with AI", key=f"t5_new_ai_note_{pid}"):
                         _note_api_key = _secret("ANTHROPIC_API_KEY")
                         if not st.session_state.get(f"t5_new_note_{pid}", "").strip():
@@ -704,32 +748,16 @@ def render_tab_generate(email: str):
                                 st.warning(f"AI formatting error: {_note_ai_err}")
                             else:
                                 st.rerun()
-                with _note_tmpl_col:
-                    st.markdown("**Saved templates**")
-                    _note_tmpls = _rfi_templates.get("note", {})
-                    if _note_tmpls:
-                        for _tname, _ttext in _note_tmpls.items():
-                            _tn1, _tn2 = st.columns([3, 1])
-                            with _tn1:
-                                st.write(_tname)
-                            with _tn2:
-                                if st.button("←", key=f"t5_new_note_load_{_tname}_{pid}",
-                                             use_container_width=True):
-                                    st.session_state[f"t5_new_note_stage_{pid}"] = _ttext
-                                    st.rerun()
-                    else:
-                        st.markdown(
-                            '<span style="font-size:11px;color:#6b7280;">No saved templates yet</span>',
-                            unsafe_allow_html=True)
-                    st.markdown("---")
-                    _note_tname_col, _note_save_col = st.columns([3, 1])
-                    with _note_tname_col:
+                    if st.button("Save as template", key=f"t5_new_note_savetoggle_{pid}"):
+                        st.session_state[f"t5_new_note_savebox_{pid}"] = True
+                        st.rerun()
+
+                if st.session_state.get(f"t5_new_note_savebox_{pid}"):
+                    with st.container(key=f"t5_note_saverow_{pid}"):
                         st.text_input("", placeholder="Template name...",
                                       key=f"t5_new_note_tname_{pid}",
                                       label_visibility="collapsed")
-                    with _note_save_col:
-                        if st.button("Save", key=f"t5_new_note_save_{pid}",
-                                     use_container_width=True):
+                        if st.button("Save", key=f"t5_new_note_save_{pid}"):
                             _note_save_name = st.session_state.get(f"t5_new_note_tname_{pid}", "").strip()
                             _note_save_text = st.session_state.get(f"t5_new_note_{pid}", "").strip()
                             if not _note_save_name or not _note_save_text:
@@ -740,7 +768,45 @@ def render_tab_generate(email: str):
                                 save_rfi_templates(email, _note_tmpl_data)
                                 st.success(f"Template '{_note_save_name}' saved.")
                                 st.session_state.pop(f"t5_new_note_tname_{pid}", None)
+                                st.session_state[f"t5_new_note_savebox_{pid}"] = False
                                 st.rerun()
+                        if st.button("Cancel", key=f"t5_new_note_savecancel_{pid}"):
+                            st.session_state[f"t5_new_note_savebox_{pid}"] = False
+                            st.rerun()
+
+                _note_tmpls = _rfi_templates.get("note", {})
+                with st.expander(f"Saved templates ({len(_note_tmpls)})", expanded=False):
+                    if _note_tmpls:
+                        for _tname, _ttext in _note_tmpls.items():
+                            _note_preview = " ".join(_ttext.split())
+                            if len(_note_preview) > 60:
+                                _note_preview = _note_preview[:60].rstrip() + "…"
+                            _note_del_confirm_key = f"t5_new_note_delconfirm_{_tname}_{pid}"
+                            with st.container(key=f"t5_note_tmpl_row_{_tname}_{pid}"):
+                                with st.container():
+                                    st.write(_tname)
+                                    st.caption(_md_escape(_note_preview))
+                                if st.session_state.get(_note_del_confirm_key):
+                                    if st.button("Yes, delete", key=f"t5_new_note_delyes_{_tname}_{pid}"):
+                                        _note_del_data = load_rfi_templates(email)
+                                        _note_del_data["note"].pop(_tname, None)
+                                        save_rfi_templates(email, _note_del_data)
+                                        st.session_state.pop(_note_del_confirm_key, None)
+                                        st.rerun()
+                                    if st.button("Cancel", key=f"t5_new_note_delno_{_tname}_{pid}"):
+                                        st.session_state.pop(_note_del_confirm_key, None)
+                                        st.rerun()
+                                else:
+                                    if st.button("Use", key=f"t5_new_note_load_{_tname}_{pid}"):
+                                        st.session_state[f"t5_new_note_stage_{pid}"] = _ttext
+                                        st.rerun()
+                                    if st.button("🗑", key=f"t5_new_note_del_{_tname}_{pid}"):
+                                        st.session_state[_note_del_confirm_key] = True
+                                        st.rerun()
+                    else:
+                        st.markdown(
+                            '<span style="font-size:11px;color:#6b7280;">No saved templates yet</span>',
+                            unsafe_allow_html=True)
 
                 # ── SECTION 4 — Impact Assessment ────────────────────────────
                 st.markdown(
