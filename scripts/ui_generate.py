@@ -75,6 +75,7 @@ def _register_row_to_record(row: dict, clients: list) -> dict:
         "schedule":            row.get("schedule_impact", "TBD"),
         "env":                 row.get("environmental_impact", "TBD"),
         "pub":                 row.get("public_affairs_impact", "TBD"),
+        "document_path":       row.get("document_path", ""),
     }
 
 
@@ -107,7 +108,42 @@ def render_tab_generate(email: str):
     _scripts = SCRIPTS_PY_DIR
     _tmp_dir = proj_dir(pid, email)
 
-    st.markdown("## Generate RFI Document")
+    def _t5_reset_home_state():
+        for _ck in list(st.session_state.keys()):
+            if _ck.startswith("t5_new_") and _ck.endswith(f"_{pid}"):
+                st.session_state.pop(_ck, None)
+        st.session_state[f"t5_new_saved_{pid}"] = False
+        st.session_state[f"t5_selected_rfi_{pid}"] = None
+        st.session_state[f"t5_lp_query_{pid}"] = ""
+        st.session_state[f"t5_lp_filter_{pid}"] = "all"
+
+    if st.session_state.pop(f"t5_refresh_pending_{pid}", False):
+        _t5_reset_home_state()
+
+    _t5_sel_early   = st.session_state.get(f"t5_selected_rfi_{pid}")
+    _t5_rec_early   = st.session_state.get(f"t5_new_record_{pid}", {})
+    _t5_saved_early = st.session_state.get(f"t5_new_saved_{pid}", False)
+    _t5_has_content_early = bool(_t5_rec_early.get("subject", "").strip())
+    _t5_edit_open = _t5_sel_early is not None and (
+        not _t5_saved_early or not _t5_has_content_early
+    )
+    _t5_refresh_trigger_save = False
+
+    with st.container(key="t5_heading_row"):
+        # Ratio is a placeholder — the CSS below overrides both columns'
+        # sizing, so these numbers no longer affect layout.
+        _hcol1, _hcol2 = st.columns([1, 1])
+        with _hcol1:
+            st.markdown("## Generate RFI Document")
+        with _hcol2:
+            if st.button("🔄", key=f"t5_refresh_{pid}",
+                         help="Save and return home" if _t5_edit_open else "Refresh"):
+                if _t5_edit_open:
+                    st.session_state[f"t5_refresh_pending_{pid}"] = True
+                    _t5_refresh_trigger_save = True
+                else:
+                    _t5_reset_home_state()
+                    st.rerun()
     st.markdown(
         '<div style="font-size:12px;color:#6b7280;'
         'margin-top:-8px;margin-bottom:8px;">'
@@ -201,6 +237,16 @@ def render_tab_generate(email: str):
             'overflow:hidden !important; text-overflow:ellipsis !important; }'
             '.st-key-t5_panel_root [data-testid="stHorizontalBlock"] > div:first-child { '
             'max-width:280px !important; }'
+            '.st-key-t5_panel_root [data-testid="stFormSubmitButton"] button p { '
+            'white-space:nowrap !important; }'
+            '.st-key-t5_heading_row [data-testid="stHorizontalBlock"] > div:first-child { '
+            'flex:0 1 auto !important; width:auto !important; }'
+            '.st-key-t5_heading_row [data-testid="stHorizontalBlock"] > div:last-child .stButton { '
+            'flex:0 0 auto !important; width:fit-content !important; }'
+            '.st-key-t5_heading_row [data-testid="stHorizontalBlock"] { '
+            'align-items:center !important; }'
+            '.st-key-t5_heading_row .stButton button { '
+            'height:38px !important; min-height:0 !important; padding:0 10px !important; }'
             '</style>',
             unsafe_allow_html=True)
 
@@ -271,7 +317,7 @@ def render_tab_generate(email: str):
 
         st.session_state.setdefault(f"t5_lp_query_{pid}", "")
         with st.form(f"t5_lp_search_form_{pid}", clear_on_submit=False):
-            _lp_search_col, _lp_search_btn_col = st.columns([3, 1])
+            _lp_search_col, _lp_search_btn_col = st.columns([2, 1])
             with _lp_search_col:
                 _lp_query_input = st.text_input(
                     "Search", value=st.session_state[f"t5_lp_query_{pid}"],
@@ -749,7 +795,7 @@ def render_tab_generate(email: str):
                         type="primary",
                         key=f"t5_new_save_{pid}",
                         use_container_width=True,
-                    )
+                    ) or _t5_refresh_trigger_save
                 with _nb2:
                     _new_cancel = st.button(
                         "Cancel",
@@ -958,6 +1004,9 @@ def render_tab_generate(email: str):
                                 st.session_state[f"t5_new_saved_{pid}"] = True
                                 st.rerun()
 
+                if _t5_refresh_trigger_save:
+                    st.session_state.pop(f"t5_refresh_pending_{pid}", None)
+
             else:
                 # ─── VIEW MODE ────────────────────────────────────────────────
                 _rfi_num = int(_rec.get("rfi_num", 1))
@@ -1075,23 +1124,67 @@ def render_tab_generate(email: str):
                         '<div style="font-size:12px;color:#9ca3af;">No attachments</div>',
                         unsafe_allow_html=True)
 
-                # ── Generate / Edit buttons ───────────────────────────────────
+                # ── Generate/Download / Edit / Regenerate buttons ─────────────
                 st.markdown("<div style='margin-top:16px;'></div>", unsafe_allow_html=True)
-                _vb1, _vb2 = st.columns([2, 1])
-                with _vb1:
-                    _view_gen = st.button(
-                        "▶ Generate Word Document",
-                        type="primary",
-                        disabled=_gen_disabled,
-                        key=f"t5_new_gen_{pid}",
-                        use_container_width=True,
-                    )
-                with _vb2:
-                    _view_edit = st.button(
-                        "✏ Edit",
-                        key=f"t5_new_edit_{pid}",
-                        use_container_width=True,
-                    )
+                _doc_path_val = _rec.get("document_path", "")
+
+                if not _doc_path_val:
+                    _vb1, _vb2 = st.columns([2, 1])
+                    with _vb1:
+                        _view_gen = st.button(
+                            "▶ Generate Word Document",
+                            type="primary",
+                            disabled=_gen_disabled,
+                            key=f"t5_new_gen_{pid}",
+                            use_container_width=True,
+                        )
+                    with _vb2:
+                        _view_edit = st.button(
+                            "✏ Edit",
+                            key=f"t5_new_edit_{pid}",
+                            use_container_width=True,
+                        )
+                else:
+                    _doc_name = os.path.basename(_doc_path_val)
+                    _view_doc_local = out_dir / _doc_name
+                    if _view_doc_local.exists():
+                        with open(_view_doc_local, "rb") as _view_doc_fh:
+                            _view_doc_bytes = _view_doc_fh.read()
+                    else:
+                        with st.spinner("Loading…"):
+                            _view_doc_bytes = download_project_document(email, pid, _doc_name)
+
+                    _vb1, _vb2, _vb3 = st.columns([2, 1, 1])
+                    with _vb1:
+                        if _view_doc_bytes:
+                            st.download_button(
+                                "↓ Download",
+                                data=_view_doc_bytes,
+                                file_name=_doc_name,
+                                mime="application/vnd.openxmlformats-officedocument"
+                                     ".wordprocessingml.document",
+                                type="primary",
+                                key=f"t5_view_dl_{pid}",
+                                use_container_width=True,
+                            )
+                        else:
+                            st.error(
+                                f"Document '{_doc_name}' could not be found locally "
+                                f"or in cloud storage. Use Regenerate to create it again."
+                            )
+                    with _vb2:
+                        _view_edit = st.button(
+                            "✏ Edit",
+                            key=f"t5_new_edit_{pid}",
+                            use_container_width=True,
+                        )
+                    with _vb3:
+                        _view_gen = st.button(
+                            "↻ Regenerate",
+                            disabled=_gen_disabled,
+                            key=f"t5_new_gen_{pid}",
+                            use_container_width=True,
+                        )
 
                 if _view_edit:
                     _PRIORITY_OPTS_EDIT = ["Normal", "Critical", "High", "Low"]
