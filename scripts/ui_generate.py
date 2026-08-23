@@ -40,6 +40,14 @@ def _md_escape(text: str) -> str:
     return text
 
 
+def _row_str(row: dict, key: str, default: str = "") -> str:
+    """row.get(key, default) but also substitutes default when the column
+    exists and is SQL NULL — dict.get only falls back when the key is
+    absent, and Supabase always returns every column."""
+    val = row.get(key)
+    return val if val is not None else default
+
+
 def _register_row_to_record(row: dict, clients: list) -> dict:
     """Build a dict shaped like t5_new_record_{pid} from a register row,
     so a saved RFI can be reopened into the existing View/Edit/Generate paths."""
@@ -51,31 +59,31 @@ def _register_row_to_record(row: dict, clients: list) -> dict:
         except (ValueError, TypeError):
             _rbd = None
 
-    _client_id = row.get("client_id", "")
+    _client_id = _row_str(row, "client_id", "")
     _client_idx = next(
         (i for i, c in enumerate(clients) if (c.get("id") or f"pos{i}") == _client_id),
         None,
     )
 
     return {
-        "rfi_num":             row.get("rfi_number", 1),
-        "priority":            row.get("priority", "Normal"),
-        "category":            row.get("category", ""),
-        "subject":             row.get("description", ""),
-        "question":            row.get("question", ""),
-        "sheets":              row.get("sheet_reference", ""),
-        "reference_doc":       row.get("reference_doc", ""),
+        "rfi_num":             row.get("rfi_number") if row.get("rfi_number") is not None else 1,
+        "priority":            _row_str(row, "priority", "Normal"),
+        "category":            _row_str(row, "category", ""),
+        "subject":             _row_str(row, "description", ""),
+        "question":            _row_str(row, "question", ""),
+        "sheets":              _row_str(row, "sheet_reference", ""),
+        "reference_doc":       _row_str(row, "reference_doc", ""),
         "response_required_by": _rbd,
         "client_idx":          _client_idx,
         "client_missing":      _client_idx is None,
         "client_id_raw":       _client_id,
-        "instructions":        row.get("instructions", ""),
-        "note":                row.get("note", ""),
-        "cost":                row.get("cost_impact", "TBD"),
-        "schedule":            row.get("schedule_impact", "TBD"),
-        "env":                 row.get("environmental_impact", "TBD"),
-        "pub":                 row.get("public_affairs_impact", "TBD"),
-        "document_path":       row.get("document_path", ""),
+        "instructions":        _row_str(row, "instructions", ""),
+        "note":                _row_str(row, "note", ""),
+        "cost":                _row_str(row, "cost_impact", "TBD"),
+        "schedule":            _row_str(row, "schedule_impact", "TBD"),
+        "env":                 _row_str(row, "environmental_impact", "TBD"),
+        "pub":                 _row_str(row, "public_affairs_impact", "TBD"),
+        "document_path":       _row_str(row, "document_path", ""),
     }
 
 
@@ -314,7 +322,7 @@ def render_tab_generate(email: str):
             _lp_rows.append({
                 "kind": "generated" if _sv_row.get("document_path") else "draft",
                 "num": _sv_num,
-                "subject": _sv_row.get("description", ""),
+                "subject": _row_str(_sv_row, "description", ""),
                 "due": _sv_row.get("response_required_by"),
                 "ref": _sv_row,
             })
