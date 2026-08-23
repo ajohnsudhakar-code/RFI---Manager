@@ -3,7 +3,7 @@
 Observations, concerns, and non-blocking issues found during testing.
 Add to this file as they come up. Fix later in priority order.
 
-**Last updated:** 13 August 2026 — Tab 5 list rebuilt (C1, C2); C3 discarded
+**Last updated:** 23 August 2026
 
 ---
 
@@ -206,6 +206,38 @@ the model quietly fails.
 ---
 
 ## OPEN ITEMS
+
+### 🟠 P1 — track_usage silently fails on every call (RLS 42501)
+**Found:** 23 Aug 2026, reading the error log during a Tab 5 session
+**Note:** the FIXED entry dated 25 May 2026 claiming this was resolved is
+wrong. The policy was added, but the bug was never in the policy.
+**What:** every call to `track_usage` in `data_layer.py` fails with
+`42501 — new row violates row-level security policy for table "usage_events"`.
+Five failures in one session (13:44, 14:02, 14:04, 14:18, 14:26). The
+exception is swallowed by the `except` at line 315, so nothing surfaces in
+the UI and the app appears to work.
+**Root cause — confirmed against the live database, not inferred:**
+`track_usage` at line 308 calls `_get_storage_client()` instead of the
+authenticated client. That client carries no user session, so at the
+database `auth.email()` is null and the role is `anon`, not `authenticated`.
+The table has two INSERT policies and an anon client satisfies neither:
+`allow insert for authenticated users` has `with_check: true` but is granted
+only to the `authenticated` role; `usage_events_insert` is granted to PUBLIC
+but requires `auth.email() = meta->>'email'`, and `auth.email()` is null.
+The May policy has been correct and unused for three months.
+**Why it matters:** no usage analytics exist. Every event since 25 May is
+missing. Any decision about which features get used is being made against an
+empty table.
+**Fix:** change `track_usage` to use the authenticated Supabase client rather
+than `_get_storage_client()`. First find out why the storage client was used
+— it may be called from a context with no session. Do NOT instead add an
+anon INSERT policy; that lets anyone write arbitrary rows into the analytics
+table of a public app.
+**Files:** `data_layer.py` lines 306-316
+**Blocker?** Not for users. Blocking for any decision that depends on
+knowing what users actually do.
+
+---
 
 ### 🔴 P0 — Save functions report success when the write failed
 **Found:** 9 Aug 2026 (`save_cfg`). **Second instance found:** 10 Aug 2026
@@ -699,7 +731,9 @@ becomes unusable. There is no search, no delete, no rename, no organisation.
 fields. Streamlit logs a warning: "label got an empty value. This is discouraged for
 accessibility reasons and may be disallowed in the future by raising an exception."
 **Note:** This entry previously cited lines 404 and 480. Line numbers have drifted —
-the warning was observed at line 527 on 9 Aug 2026. **Locate by symbol, not line number.**
+the warning was observed at line 527 on 9 Aug 2026, and a third occurrence was found at
+line 739 on 23 Aug 2026. The count went from two to three once someone actually looked —
+**do not trust this list; grep `scripts/` for `text_input("` instead.**
 **Why it matters:** Currently only a warning. A future Streamlit version will turn this into
 a hard exception and crash Tab 5.
 **Fix:** Add a real label plus `label_visibility="collapsed"` to both text inputs.
@@ -760,6 +794,59 @@ Save → View → Generate path automatically.
 ---
 
 ## FIXED
+
+### ✅ Tab 5 left panel sprawled to full page width
+**Fixed:** 23 Aug 2026 (`09a5cfd`)
+The left panel in Tab 5 had no width constraint, so on a wide screen it
+stretched the same as the detail panel instead of reading as a list beside
+it. Wrapped the `st.columns` split in `st.container(key="t5_panel_root")`
+and added a max-width rule scoped to that key, capping the panel at 280px.
+**Caused a regression, fixed below:** the search button wrapped onto two
+lines once the panel narrowed.
+
+### ✅ Search button wrapped onto two lines after the 280px panel cap
+**Fixed:** 23 Aug 2026
+Capping the left panel at 280px (above) left too little width for the
+search box and button on one line. Changed the column ratio from `[3,1]` to
+`[2,1]` and added a `white-space: nowrap` rule anchored on
+`[data-testid="stFormSubmitButton"]` — the only selector that reaches a
+form-submit button; it cannot reach a plain `st.button` widget, which is why
+the rule is scoped that way rather than to `.stButton`.
+
+### ✅ View Mode always showed Generate, even for RFIs with a document
+**Fixed:** 23 Aug 2026
+Tab 5's View Mode offered only the Generate action regardless of whether a
+document already existed for the RFI. `_register_row_to_record` now maps
+`document_path` onto the rebuilt record, and the button row branches on it:
+Download + Edit + Regenerate when a document exists, Generate otherwise.
+Regenerate reuses the existing Generate widget key so the current handler
+fires unchanged — no new handler was written. Download resolves the file
+from local disk first, falling back to Supabase Storage. The filename is
+always read from the stored path rather than rebuilt, because
+`generate_rfi.py` bakes the generation date into the filename and
+reconstructing it would drift from the actual stored file.
+**Known behaviour:** Regenerate closes the RFI back to the placeholder
+state, since it shares the Generate handler's reset — not yet distinguished
+from a fresh generate.
+
+### ✅ Refresh icon added beside the Tab 5 heading
+**Fixed:** 23 Aug 2026
+Added a refresh icon beside the Tab 5 heading. In Edit Mode it saves, then
+returns to the home state; otherwise it resets immediately. It does not
+refresh if the save fails. Implemented without touching the 190-line Save
+handler — the new behaviour ORs a flag into the existing `_new_save`
+assignment, which sits outside that handler. A session flag
+`t5_refresh_pending_{pid}` survives the handler's own rerun and is consumed
+exactly once via `.pop()`; on a failed save it is cleared within the same
+run so a later rerun cannot wipe the form.
+**Worth recording — this layout took four passes:** Streamlit's columns
+size proportionally to available width, not to content, so naive ratios
+misjudge small elements like an icon button. A 300px cap on the container
+clipped the heading, because an `h2` renders at 36px and needs 380-400px of
+room. The fix was `flex: 0 1 auto` with `width: auto` — `flex-grow: 0` is
+specifically what stops Streamlit's own `flex-grow: 1` from re-expanding the
+element. Vertical alignment needed `align-items: center` with no margin
+compensation, since `h2` padding is symmetric top and bottom.
 
 ### ✅ The register row is now the RFI — schema, write, guard, and loader
 **Fixed:** 12-13 Aug 2026 across `ecca09c`, `c13077e`, `9c994e2`, `66abc60`, `612f297`
@@ -929,9 +1016,11 @@ IDs changed. Renaming a project leaves the pid unchanged, so the cache never
 refreshed. Save handler in `ui_project.py` now clears `_sb_labels` and
 `_sb_label_pids` after a successful save.
 
-### ✅ usage_events RLS blocking inserts (code 42501)
+### ⚠️ usage_events RLS blocking inserts (code 42501) — NOT ACTUALLY FIXED
 **Fixed:** 25 May 2026
-Added an INSERT policy for authenticated users on the `usage_events` table
-via Supabase. Analytics now record correctly.
+The INSERT policy for authenticated users was added correctly on the
+`usage_events` table via Supabase. But `track_usage` sends the insert with
+an unauthenticated (storage) client, so the policy never actually applied —
+see the `track_usage` P1 in OPEN ITEMS, found 23 Aug 2026.
 
 ---
