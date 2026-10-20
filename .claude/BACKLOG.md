@@ -3,7 +3,7 @@
 Observations, concerns, and non-blocking issues found during testing.
 Add to this file as they come up. Fix later in priority order.
 
-**Last updated:** 23 August 2026
+**Last updated:** 20 October 2026
 
 ---
 
@@ -18,50 +18,35 @@ Add to this file as they come up. Fix later in priority order.
 
 ## IN FLIGHT
 
-Clean tree at `8045c90`. Nineteen commits.
+Clean tree at `6b1dad2`, pushed. Nothing in progress.
 
-**Tab 5 list rebuild — where it got to.**
-Three passes were planned. C1 and C2 are committed and working. **C3 was built,
-tested, and deliberately discarded** — see the decision below, it matters.
+**Where Tab 5 got to.** The August sessions finished the list rebuild and the
+form: folder filters and search (`8045c90`), a 280px cap on the list panel
+(`09a5cfd`), Download in View Mode for RFIs that already have a document
+(`ca36f2d`), a 900px cap on the form (`1c1cf66`), unified "Format with AI"
+buttons and horizontal impact radios (`71eec01`), and saved templates rebuilt
+with previews and delete (`dce22e0`).
 
-- **C1 (`d894335`)** — dedupe. An approved AI issue is now hidden from the list
-  once a register row exists for its number, not once a `.docx` filename matches.
-  This also closed the "delete a document and the card resurrects" bug, since
-  list membership no longer depends on what files happen to exist in Storage.
-- **C2 (`8045c90`)** — the list itself. Folder filters with counts (All / To
-  raise / Draft / Generated), a search box gated behind a form so it does not
-  rerun per keystroke, and one compact row per RFI replacing the old card + Open
-  button pairs. Rows are `st.button` with scoped CSS: left-aligned, hairline
-  divider, CSS `text-overflow: ellipsis` rather than a fixed character cut, and
-  `:gray[...]` markdown on the number and date so the subject carries the weight.
+**C3 was built and deliberately discarded — do not rebuild it without reading
+this.** C3 replaced the permanent `st.columns` split with list-or-detail: the
+list filled the page, clicking a row replaced it with the RFI at full width.
+It worked. It was discarded because Gmail on desktop keeps the list beside the
+message; only mobile replaces it. The argument for replacing was that a 600px
+panel left the detail only 360px — but the tab renders at full page width, so
+a split gives the list ~400px and the detail far more. The reasoning was right
+for a width this tab does not have.
 
-**C3 was discarded — do not rebuild it without reading this.**
-C3 replaced the permanent `st.columns` split with list-or-detail: the list filled
-the page, clicking a row replaced it with the RFI at full width, with a back link.
-It was implemented, tested, and worked correctly.
+**The 20 October session** walked the whole manual flow end to end for the
+first time since the rebuild — new snapshot uploaded, captioned, RFI generated,
+document opened and read byte by byte. That walk produced the caption fix
+(`6b1dad2`) and the two new P2s below. Everything else found was already logged.
 
-It was discarded because it is the wrong model for this app. Gmail on **desktop**
-keeps the list visible beside the message; only mobile replaces it. The original
-argument for replacing was that a 600px panel left the detail only 360px — but
-the tab now renders at full page width, so a split gives the list ~400px and the
-detail ~1100px, which is ample for both. The reasoning was right for the width we
-had and wrong for the width we now have.
-
-**Immediate next step:** Tab 5 has no width constraint at all, which is why the
-list rows sprawled to ~130 characters of subject at 1600px. Give the tab a
-sensible max width the way Tabs 1 and 2 already do (`st.container(key=...)` plus
-a scoped rule using `width` and `align-self: center !important` — `margin: auto`
-does not work, the key class lands on a flex item). Then the split reads properly
-at any screen size.
-
-**Untested, already committed:**
+**Still untested:**
 - Tab 3 prompt change (`45148f5`) — never run against a real drawing set.
-- Tab 4 captions (`e76c3a2`) — save but do **not** print on the document.
-- Markdown escaping on row labels — `_md_escape` was added when the row label
-  became markdown. Untested against a subject containing `*`, `[` or `#`.
-- Two register smoke tests: renumbering an RFI with no document (the only path
-  that deletes a register row), and regenerating on a **different calendar day**
-  from first generation.
+- Markdown escaping on row labels — `_md_escape` untested against a subject
+  containing `*`, `[` or `#`.
+- Renumbering an RFI with no document — the only path that deletes a register row.
+- Regenerating on a different calendar day from first generation.
 
 ---
 
@@ -411,25 +396,6 @@ the pending card never disappears. The dedupe is correct; the prefill undercuts 
 
 ---
 
-### 🟠 P1 — Snapshot captions save but never print on the document
-**Found:** 12 Aug 2026
-**What:** Tab 4 now captures a free-text caption per crop and stores it in
-`captions_data` (`e76c3a2`). `generate_rfi.py` never reads that column — the
-caption paragraph under each image still prints
-`"Attachment N of M — Sheet ref. {sheets}"` from the RFI-level sheets field
-(`generate_rfi.py:779-780`).
-**Why it matters:** the user types a caption and it goes nowhere. A feature that
-appears to work and does not is worse than one that is absent.
-**Fix:** load `load_project_captions(pid, email)` at `ui_generate.py:976` where
-`pid` and `email` are already in scope, pass it through config, and print the
-user's caption under each image — keyed by `os.path.basename(_spath)`, matching
-the pattern already used one line below for logging. Blank caption prints
-nothing at all, per John's decision.
-**Files:** `ui_generate.py`, `generate_rfi.py`
-**Blocker?** No, but it is a half-wired feature sitting in `master`.
-
----
-
 ### 🟠 P1 — The scan may be losing its richest batches silently
 **Found:** 12 Aug 2026, during the batch-failure investigation
 **What:** `max_tokens=4096` is fixed regardless of how many issues a batch
@@ -519,19 +485,25 @@ anyone exposes the setting, the document will quietly ignore it.
 
 ---
 
-### 🟠 P1 — Response Required By can be earlier than the date raised
-**Found:** 9 Aug 2026, in generated document RFI-012
-**What:** RFI-012 was raised 09 Aug 2026 with a Response Due Date of 04 Aug 2026 — five
-days in the past. The date came from Tab 3's AI prefill; the manual path correctly
-defaults to today+14 (verified in RFI-013 and RFI-014). Nothing validates that the date
-is in the future.
-**Why it matters:** The date appears three times across the two pages of the document.
-Sending a client an RFI whose response deadline has already passed looks careless and
-undermines the tool's credibility.
-**Fix:** Validate on Save that Response Required By is not earlier than today. Also fix
-whatever Tab 3 writes as the prefilled date.
+### 🟡 P2 — Response Required By in the past (decided against blocking)
+**Found:** 9 Aug 2026 in RFI-012. **Seen again 20 Oct 2026 in RFI-001.**
+**Decision 20 Oct: do not block the date picker.**
+**What:** RFI-001 was raised 13 Aug with a response date of 4 Aug. Regenerating
+it on 20 Oct reprinted that same stale date — 77 days in the past — on a
+document headed to a recipient. The date appears three times across the two
+pages.
+**Root cause, already identified 9 Aug and still correct:** the date comes from
+Tab 3's AI prefill. The manual path correctly defaults to today+14 (verified in
+RFI-013 and RFI-014). Nothing validates it, and generation reuses it silently.
+**Why blocking the picker was rejected:** setting the minimum to today would
+break every historical RFI, since Streamlit's `date_input` raises when its
+stored value falls outside the allowed range. And backdating is legitimate —
+an engineer recording an RFI retrospectively should be allowed to.
+**What the fix would be if revisited:** a warning at Generate — "response date
+is N days in the past, continue?" — plus correcting what Tab 3 prefills. Not a
+restriction on the picker.
 **Files:** `ui_generate.py`, `ui_analyse.py`
-**Blocker?** Not technically. Embarrassing in front of a real client.
+**Blocker?** No. Deliberately deferred by John, 20 Oct 2026.
 
 ---
 
@@ -793,7 +765,64 @@ Save → View → Generate path automatically.
 
 ---
 
+### 🟡 P2 — The 60-character caption cap truncates mid-reference
+**Found:** 20 Oct 2026, while verifying the caption fix
+**What:** "Slab thickness not noted between grid C-D / 2-3 on sheet S-204" is
+stored as "…on sheet S-2" — clipped at exactly 60 characters, mid-drawing-number.
+**Why it matters:** "S-2" and "S-204" are different drawings. A truncated sheet
+reference on a document sent to an architect is worse than no reference at all.
+**Why the cap exists:** the caption prints on one line under the image, and
+`_estimate_snap_height` reserves 0.25 inches for it. 60 characters at 8pt fits
+the narrowest column. Raising it means revisiting that height estimate, or
+letting the caption wrap.
+**Fix:** measure real captions first. Do not guess a new number — that is how
+the 300px heading cap went wrong in August.
+**Files:** `ui_crop.py` (`max_chars`, two places), `generate_rfi.py`
+(`_estimate_snap_height`)
+**Blocker?** No.
+
+---
+
+### 🟡 P2 — Streamlit deprecation warning renders in the Tab 4 UI
+**Found:** 20 Oct 2026, during the end-to-end walk
+**What:** after uploading a screenshot in Crop and Annotate the user sees "The
+use_column_width parameter has been deprecated and will be removed in a future
+release." `ui_crop.py` calls `st.image(shot_img, caption="Screenshot",
+use_column_width=True)`.
+**Why it matters:** developer noise on a user-facing screen. It reads as
+something being broken.
+**Fix:** replace `use_column_width=True` with the `width` parameter.
+**Files:** `ui_crop.py`
+**Blocker?** No. Streamlit is pinned, so it will not become an error.
+
+---
+
 ## FIXED
+
+### ✅ Snapshot captions save but never print on the document
+**Fixed:** 20 Oct 2026 — commit `6b1dad2`
+Tab 4 stored each caption in `projects.captions_data` keyed by the bare
+snapshot filename, but `generate_rfi.py` never read it — the line under each
+image was hardcoded to `Attachment {n} of {m} — Sheet ref. {sheets}`. The field
+label promised "Prints under this image on the RFI document". It did not.
+**The route:** `generate_rfi.py` imports nothing from `data_layer` and still
+doesn't. The dict travels through the config as a new top-level key
+`snapshot_captions`, alongside `approved_rfis`, `instructions_text` and
+`superintendent_text` — `paths` holds only filesystem locations and `settings`
+only numeric settings, so it belonged in neither.
+**Null safety:** unpacked with `config.get("snapshot_captions") or {}` plus an
+`isinstance` check, not `.get(key, {})` — the same `.get`-default trap fixed in
+`b3c33af`, where a key present but set to None returns None, not the default.
+The lookup is `str(SNAP_CAPTIONS.get(os.path.basename(_spath)) or "").strip()`.
+**Verified, not assumed:** the edited `generate_rfi.py` was run directly against
+the real captioned snapshot with three RFIs — one captioned, one not, one Tab 5
+upload. Output: `Attachment 1 of 1 — Slab thickness not noted between grid C-D /
+2-3 on sheet S-2` for the first, the `Sheet ref.` line for the other two.
+**Not touched:** `_embed_snapshots` (dead code — nothing calls it),
+`_estimate_snap_height`, `data_layer.py`, `ui_crop.py`, the 60-character cap.
+**Note:** the fix plan's line numbers were two months stale (`ui_generate.py:976`
+was really 1405). Read the file, not the backlog, for line numbers.
+**Files:** `ui_generate.py` 19 and 1405, `generate_rfi.py` 321-323 and 782-785
 
 ### ✅ Three CSS rules that never worked — same-element selector bug
 **Fixed:** 23 Aug 2026 — commit dce22e0
