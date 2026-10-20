@@ -318,6 +318,9 @@ def generate_rfi_document(config: dict) -> dict:
         SNAPSHOTS_DIR = _paths.get("snapshots", "")
         OUTPUT_DIR    = _paths.get("output",    "")
         MAX_SNAPSHOTS = int(_settings.get("max_snapshots", 6))
+        SNAP_CAPTIONS = config.get("snapshot_captions") or {}
+        if not isinstance(SNAP_CAPTIONS, dict):
+            SNAP_CAPTIONS = {}
 
         # ── Local helpers ─────────────────────────────────────────────────────
         def _abs(p):
@@ -776,8 +779,10 @@ def generate_rfi_document(config: dict) -> dict:
                     _cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     _cap.paragraph_format.space_before = Pt(0)
                     _cap.paragraph_format.space_after  = Pt(4)
+                    _snap_cap = str(SNAP_CAPTIONS.get(os.path.basename(_spath)) or "").strip()
                     _cap_r = _cap.add_run(
-                        f"Attachment {_si} of {_total_snaps} — Sheet ref. {sheets_str}")
+                        f"Attachment {_si} of {_total_snaps} — {_snap_cap}" if _snap_cap
+                        else f"Attachment {_si} of {_total_snaps} — Sheet ref. {sheets_str}")
                     _cap_r.font.size = Pt(8); _cap_r.font.color.rgb = C_GRAY
                     logs.append(
                         f"    Snap {_si}: {os.path.basename(_spath)}  ({_siw}x{_sih}px)")

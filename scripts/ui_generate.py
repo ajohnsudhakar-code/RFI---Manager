@@ -16,7 +16,7 @@ from data_layer import (
     upload_project_document, sync_snapshots_from_supabase,
     upload_project_snapshot, delete_project_snapshot, load_project_register,
     delete_project_register_row, delete_project_document,
-    load_rfi_templates, save_rfi_templates,
+    load_rfi_templates, save_rfi_templates, load_project_captions,
     list_project_documents, download_project_document,
     SCRIPTS_PY_DIR,
 )
@@ -1402,6 +1402,7 @@ def render_tab_generate(email: str):
                             "approved_rfis":    [_new_issue],
                             "instructions_text":   _rec.get("instructions", ""),
                             "superintendent_text": _rec.get("note", ""),
+                            "snapshot_captions":   load_project_captions(pid, email),
                         }
 
                         with st.spinner("Building Word document…"):
