@@ -1035,41 +1035,47 @@ def render_tab_generate(email: str):
                                 _saved_row  = next(
                                     (r for r in _fresh_rows if r.get("rfi_number") == _num), None
                                 )
-                                st.session_state[f"t5_new_loaded_row_id_{pid}"] = (
-                                    _saved_row.get("id") if _saved_row else None
-                                )
+                                if _saved_row is None:
+                                    st.error(
+                                        f"⚠ RFI #{_num} could not be confirmed as saved to the "
+                                        f"register. Nothing has been lost — everything you "
+                                        f"entered is still on screen. Check your connection "
+                                        f"and click Save again."
+                                    )
+                                else:
+                                    st.session_state[f"t5_new_loaded_row_id_{pid}"] = _saved_row.get("id")
 
-                                if _orig_row and _orig_row.get("rfi_number") != _num:
-                                    if not delete_project_register_row(
-                                        pid, _orig_row["rfi_number"], email
-                                    ):
-                                        st.error(
-                                            f"RFI saved as #{_num}, but the old row under "
-                                            f"#{_orig_row['rfi_number']} could not be removed — "
-                                            f"it now appears under BOTH numbers. Open "
-                                            f"#{_orig_row['rfi_number']} in the register and "
-                                            f"delete it manually."
-                                        )
+                                    if _orig_row and _orig_row.get("rfi_number") != _num:
+                                        if not delete_project_register_row(
+                                            pid, _orig_row["rfi_number"], email
+                                        ):
+                                            st.error(
+                                                f"RFI saved as #{_num}, but the old row under "
+                                                f"#{_orig_row['rfi_number']} could not be removed — "
+                                                f"it now appears under BOTH numbers. Open "
+                                                f"#{_orig_row['rfi_number']} in the register and "
+                                                f"delete it manually."
+                                            )
 
-                                st.session_state[f"t5_new_record_{pid}"] = {
-                                    "rfi_num":             _num,
-                                    "priority":            st.session_state.get(f"t5_new_priority_{pid}", "Normal"),
-                                    "category":            st.session_state.get(f"t5_new_category_{pid}", ""),
-                                    "subject":             _subj,
-                                    "question":            _qst,
-                                    "sheets":              st.session_state.get(f"t5_new_sheets_{pid}", ""),
-                                    "reference_doc":        st.session_state.get(f"t5_new_ref_doc_{pid}", ""),
-                                    "response_required_by": st.session_state.get(f"t5_new_rbd_{pid}"),
-                                    "client_idx":          st.session_state.get(f"t5_new_client_idx_{pid}", 0),
-                                    "instructions":        st.session_state.get(f"t5_new_instructions_{pid}", ""),
-                                    "note":                st.session_state.get(f"t5_new_note_{pid}", ""),
-                                    "cost":                st.session_state.get(f"t5_new_cost_{pid}", "TBD"),
-                                    "schedule":            st.session_state.get(f"t5_new_schedule_{pid}", "TBD"),
-                                    "env":                 st.session_state.get(f"t5_new_env_{pid}", "TBD"),
-                                    "pub":                 st.session_state.get(f"t5_new_pub_{pid}", "TBD"),
-                                }
-                                st.session_state[f"t5_new_saved_{pid}"] = True
-                                st.rerun()
+                                    st.session_state[f"t5_new_record_{pid}"] = {
+                                        "rfi_num":             _num,
+                                        "priority":            st.session_state.get(f"t5_new_priority_{pid}", "Normal"),
+                                        "category":            st.session_state.get(f"t5_new_category_{pid}", ""),
+                                        "subject":             _subj,
+                                        "question":            _qst,
+                                        "sheets":              st.session_state.get(f"t5_new_sheets_{pid}", ""),
+                                        "reference_doc":        st.session_state.get(f"t5_new_ref_doc_{pid}", ""),
+                                        "response_required_by": st.session_state.get(f"t5_new_rbd_{pid}"),
+                                        "client_idx":          st.session_state.get(f"t5_new_client_idx_{pid}", 0),
+                                        "instructions":        st.session_state.get(f"t5_new_instructions_{pid}", ""),
+                                        "note":                st.session_state.get(f"t5_new_note_{pid}", ""),
+                                        "cost":                st.session_state.get(f"t5_new_cost_{pid}", "TBD"),
+                                        "schedule":            st.session_state.get(f"t5_new_schedule_{pid}", "TBD"),
+                                        "env":                 st.session_state.get(f"t5_new_env_{pid}", "TBD"),
+                                        "pub":                 st.session_state.get(f"t5_new_pub_{pid}", "TBD"),
+                                    }
+                                    st.session_state[f"t5_new_saved_{pid}"] = True
+                                    st.rerun()
 
                 if _t5_refresh_trigger_save:
                     st.session_state.pop(f"t5_refresh_pending_{pid}", None)
